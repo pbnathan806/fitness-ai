@@ -24,6 +24,12 @@ class User(Base):
         String(255), unique=True, nullable=False, index=True
     )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Annotation kept non-Optional (with nullable=True set explicitly) because
+    # SQLAlchemy 2.0.36's Mapped[X | None] resolution crashes on Python 3.14;
+    # the column is nullable at the DB/ORM level regardless.
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
