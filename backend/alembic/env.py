@@ -9,6 +9,7 @@ from alembic import context
 
 from core.config import settings
 from database.base import Base
+import models  # noqa: F401  (registers ORM models on Base.metadata for autogenerate)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

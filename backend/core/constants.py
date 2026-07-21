@@ -1,0 +1,7 @@
+class RoleName:
+    SUPER_ADMIN = "SUPER_ADMIN"
+    TRAINER = "TRAINER"
+    CLIENT = "CLIENT"
+
+
+DEFAULT_ROLES = (RoleName.SUPER_ADMIN, RoleName.TRAINER, RoleName.CLIENT)
