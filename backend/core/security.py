@@ -1,4 +1,9 @@
+from datetime import datetime, timedelta, timezone
+
 import bcrypt
+import jwt
+
+from core.config import settings
 
 _BCRYPT_MAX_BYTES = 72
 
@@ -30,3 +35,46 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         )
     except ValueError:
         return False
+
+
+def create_access_token(
+    subject: str, expires_delta: timedelta | None = None
+) -> str:
+    """Generate a signed JWT access token for the given subject.
+
+    `subject` should be a stable identifier (e.g. a user id) and is stored
+    in the `sub` claim. Expiration defaults to
+    `settings.jwt_access_token_expire_minutes` and is stored, timezone-aware
+    in UTC, in the `exp` claim.
+    """
+    if not subject:
+        raise ValueError("Token subject must not be empty.")
+
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    )
+
+    payload = {
+        "sub": subject,
+        "iat": issued_at,
+        "exp": expires_at,
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_access_token(token: str) -> dict:
+    """Decode and validate a JWT access token, returning its payload.
+
+    Raises `jwt.ExpiredSignatureError` if the token has expired, and
+    `jwt.InvalidTokenError` (or a subclass) for any other validation
+    failure, such as a bad signature or malformed token.
+    """
+    if not token:
+        raise jwt.InvalidTokenError("Token must not be empty.")
+
+    return jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )

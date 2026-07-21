@@ -1,6 +1,15 @@
+from datetime import timedelta
+
+import jwt
 import pytest
 
-from core.security import hash_password, verify_password
+from core.config import settings
+from core.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 
 
 def test_hash_password_returns_different_value_than_plain_password():
@@ -48,3 +57,78 @@ def test_hash_password_rejects_empty_password():
 def test_hash_password_rejects_password_over_72_bytes():
     with pytest.raises(ValueError):
         hash_password("a" * 73)
+
+
+def test_create_access_token_returns_decodable_jwt():
+    token = create_access_token(subject="user-123")
+
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )
+    assert payload["sub"] == "user-123"
+    assert "iat" in payload
+    assert "exp" in payload
+
+
+def test_create_access_token_rejects_empty_subject():
+    with pytest.raises(ValueError):
+        create_access_token(subject="")
+
+
+def test_create_access_token_uses_default_expiry_when_not_provided():
+    token = create_access_token(subject="user-123")
+
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )
+    expected_seconds = settings.jwt_access_token_expire_minutes * 60
+    assert payload["exp"] - payload["iat"] == expected_seconds
+
+
+def test_create_access_token_honors_custom_expires_delta():
+    token = create_access_token(
+        subject="user-123", expires_delta=timedelta(minutes=5)
+    )
+
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )
+    assert payload["exp"] - payload["iat"] == 5 * 60
+
+
+def test_decode_access_token_returns_original_claims():
+    token = create_access_token(subject="user-123")
+
+    payload = decode_access_token(token)
+
+    assert payload["sub"] == "user-123"
+
+
+def test_decode_access_token_rejects_empty_token():
+    with pytest.raises(jwt.InvalidTokenError):
+        decode_access_token("")
+
+
+def test_decode_access_token_rejects_tampered_token():
+    token = create_access_token(subject="user-123")
+
+    with pytest.raises(jwt.InvalidTokenError):
+        decode_access_token(token + "tampered")
+
+
+def test_decode_access_token_rejects_wrong_signature():
+    token = jwt.encode(
+        {"sub": "user-123"}, "a-different-secret-key", algorithm=settings.jwt_algorithm
+    )
+
+    with pytest.raises(jwt.InvalidTokenError):
+        decode_access_token(token)
+
+
+def test_decode_access_token_raises_on_expired_token():
+    expired_token = create_access_token(
+        subject="user-123", expires_delta=timedelta(seconds=-1)
+    )
+
+    with pytest.raises(jwt.ExpiredSignatureError):
+        decode_access_token(expired_token)

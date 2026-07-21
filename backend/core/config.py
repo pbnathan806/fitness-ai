@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     database_pool_min_size: int = 1
     database_pool_max_size: int = 10
 
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

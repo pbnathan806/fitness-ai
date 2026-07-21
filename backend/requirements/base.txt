@@ -6,3 +6,4 @@ sqlalchemy==2.0.36
 greenlet==3.5.3
 alembic==1.13.2
 bcrypt==4.2.1
+pyjwt==2.9.0
