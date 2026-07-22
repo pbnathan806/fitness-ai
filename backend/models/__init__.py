@@ -2,6 +2,11 @@ from models.client import Client
 from models.client_trainer_assignment import ClientTrainerAssignment
 from models.password_reset_token import PasswordResetToken
 from models.role import Role
+from models.subscription import (
+    Subscription,
+    SubscriptionPaymentStatus,
+    SubscriptionStatus,
+)
 from models.subscription_plan import SubscriptionPlan
 from models.trainer_profile import TrainerProfile
 from models.user import User
@@ -12,7 +17,10 @@ __all__ = [
     "ClientTrainerAssignment",
     "PasswordResetToken",
     "Role",
+    "Subscription",
+    "SubscriptionPaymentStatus",
     "SubscriptionPlan",
+    "SubscriptionStatus",
     "TrainerProfile",
     "User",
     "UserRole",

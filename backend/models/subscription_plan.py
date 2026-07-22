@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.base import Base
 
@@ -41,6 +41,12 @@ class SubscriptionPlan(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    subscriptions: Mapped[list["Subscription"]] = relationship(  # noqa: F821
+        "Subscription",
+        foreign_keys="Subscription.subscription_plan_id",
+        back_populates="subscription_plan",
     )
 
     def __repr__(self) -> str:
