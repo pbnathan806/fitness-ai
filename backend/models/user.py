@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.base import Base
 
@@ -38,6 +38,12 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    trainer_profile: Mapped["TrainerProfile"] = relationship(  # noqa: F821
+        "TrainerProfile",
+        back_populates="user",
+        uselist=False,
     )
 
     def __repr__(self) -> str:
