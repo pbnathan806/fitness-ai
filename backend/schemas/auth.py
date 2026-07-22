@@ -33,3 +33,20 @@ class ResetPasswordRequest(BaseModel):
 
 class ResetPasswordResponse(BaseModel):
     message: str = "Password has been reset successfully."
+
+
+class RolesResponse(BaseModel):
+    roles: list[str]
+    active_role: str | None = None
+
+
+class SwitchRoleRequest(BaseModel):
+    role: str = Field(min_length=1)
+
+
+class SwitchRoleResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    active_role: str
+    roles: list[str]

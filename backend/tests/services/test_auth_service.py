@@ -8,7 +8,7 @@ from core.security import hash_password
 from models.user import User
 from repositories.role_repository import RoleRepository
 from repositories.user_repository import UserRepository
-from services.auth_service import AuthService, InvalidCredentialsError
+from services.auth_service import AuthService, InvalidCredentialsError, RoleNotAssignedError
 
 
 class FakeUserRepository(UserRepository):
@@ -110,3 +110,38 @@ def test_login_returns_multiple_assigned_roles():
     session = asyncio.run(service.login("admin@example.com", "Str0ngPassword!"))
 
     assert session.roles == ["SUPER_ADMIN", "TRAINER"]
+
+
+def test_list_assigned_roles_returns_roles_for_user():
+    user = _make_user("admin@example.com", "Str0ngPassword!")
+    user_repository = FakeUserRepository(user)
+    role_repository = FakeRoleRepository(["SUPER_ADMIN", "TRAINER"])
+    service = AuthService(user_repository, role_repository)
+
+    roles = asyncio.run(service.list_assigned_roles(user.id))
+
+    assert roles == ["SUPER_ADMIN", "TRAINER"]
+
+
+def test_switch_role_succeeds_for_assigned_role():
+    user = _make_user("admin@example.com", "Str0ngPassword!")
+    user_repository = FakeUserRepository(user)
+    role_repository = FakeRoleRepository(["SUPER_ADMIN", "TRAINER"])
+    service = AuthService(user_repository, role_repository)
+
+    selection = asyncio.run(service.switch_role(user.id, "TRAINER"))
+
+    assert selection.active_role == "TRAINER"
+    assert selection.roles == ["SUPER_ADMIN", "TRAINER"]
+    assert selection.token_type == "bearer"
+    assert selection.access_token
+
+
+def test_switch_role_rejects_unassigned_role():
+    user = _make_user("trainer@example.com", "Str0ngPassword!")
+    user_repository = FakeUserRepository(user)
+    role_repository = FakeRoleRepository(["TRAINER"])
+    service = AuthService(user_repository, role_repository)
+
+    with pytest.raises(RoleNotAssignedError):
+        asyncio.run(service.switch_role(user.id, "SUPER_ADMIN"))

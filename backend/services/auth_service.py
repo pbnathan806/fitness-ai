@@ -12,12 +12,25 @@ class InvalidCredentialsError(Exception):
     """Raised when login credentials do not match an active user."""
 
 
+class RoleNotAssignedError(Exception):
+    """Raised when a user attempts to select a role that is not assigned to them."""
+
+
 @dataclass(frozen=True)
 class AuthenticatedSession:
     access_token: str
     token_type: str
     expires_in: int
     user_id: uuid.UUID
+    roles: list[str]
+
+
+@dataclass(frozen=True)
+class RoleSelection:
+    access_token: str
+    token_type: str
+    expires_in: int
+    active_role: str
     roles: list[str]
 
 
@@ -41,5 +54,22 @@ class AuthService:
             token_type="bearer",
             expires_in=settings.jwt_access_token_expire_minutes * 60,
             user_id=user.id,
+            roles=roles,
+        )
+
+    async def list_assigned_roles(self, user_id: uuid.UUID) -> list[str]:
+        return await self._role_repository.get_role_names_for_user(user_id)
+
+    async def switch_role(self, user_id: uuid.UUID, role: str) -> RoleSelection:
+        roles = await self._role_repository.get_role_names_for_user(user_id)
+        if role not in roles:
+            raise RoleNotAssignedError(f"Role '{role}' is not assigned to this user.")
+
+        access_token = create_access_token(subject=str(user_id), active_role=role)
+        return RoleSelection(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=settings.jwt_access_token_expire_minutes * 60,
+            active_role=role,
             roles=roles,
         )

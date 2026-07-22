@@ -87,6 +87,24 @@ def test_create_access_token_uses_default_expiry_when_not_provided():
     assert payload["exp"] - payload["iat"] == expected_seconds
 
 
+def test_create_access_token_omits_active_role_claim_by_default():
+    token = create_access_token(subject="user-123")
+
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )
+    assert "active_role" not in payload
+
+
+def test_create_access_token_includes_active_role_when_provided():
+    token = create_access_token(subject="user-123", active_role="TRAINER")
+
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+    )
+    assert payload["active_role"] == "TRAINER"
+
+
 def test_create_access_token_honors_custom_expires_delta():
     token = create_access_token(
         subject="user-123", expires_delta=timedelta(minutes=5)

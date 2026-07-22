@@ -41,14 +41,18 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(
-    subject: str, expires_delta: timedelta | None = None
+    subject: str,
+    expires_delta: timedelta | None = None,
+    active_role: str | None = None,
 ) -> str:
     """Generate a signed JWT access token for the given subject.
 
     `subject` should be a stable identifier (e.g. a user id) and is stored
     in the `sub` claim. Expiration defaults to
     `settings.jwt_access_token_expire_minutes` and is stored, timezone-aware
-    in UTC, in the `exp` claim.
+    in UTC, in the `exp` claim. `active_role`, when provided, is stored in
+    the `active_role` claim so the currently selected role travels with the
+    token instead of requiring server-side session state.
     """
     if not subject:
         raise ValueError("Token subject must not be empty.")
@@ -65,6 +69,9 @@ def create_access_token(
         "iat": issued_at,
         "exp": expires_at,
     }
+    if active_role is not None:
+        payload["active_role"] = active_role
+
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
