@@ -5,6 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import CurrentUser, get_current_user
 from database.session import get_db
+from repositories.assignment_repository import (
+    AssignmentRepository,
+    SQLAlchemyAssignmentRepository,
+)
 from repositories.client_repository import ClientRepository, SQLAlchemyClientRepository
 from repositories.role_repository import RoleRepository, SQLAlchemyRoleRepository
 from repositories.user_repository import SQLAlchemyUserRepository, UserRepository
@@ -37,12 +41,19 @@ def get_client_repository(session: AsyncSession = Depends(get_db)) -> ClientRepo
     return SQLAlchemyClientRepository(session)
 
 
+def get_assignment_repository(session: AsyncSession = Depends(get_db)) -> AssignmentRepository:
+    return SQLAlchemyAssignmentRepository(session)
+
+
 def get_client_service(
     client_repository: ClientRepository = Depends(get_client_repository),
     user_repository: UserRepository = Depends(get_user_repository),
     role_repository: RoleRepository = Depends(get_role_repository),
+    assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
 ) -> ClientService:
-    return ClientService(client_repository, user_repository, role_repository)
+    return ClientService(
+        client_repository, user_repository, role_repository, assignment_repository
+    )
 
 
 def _to_response(profile: ClientProfile) -> ClientResponse:
@@ -80,6 +91,47 @@ async def create_client(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except EmailAlreadyExistsError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return _to_response(profile)
+
+
+@router.get("/me", response_model=ClientResponse, status_code=status.HTTP_200_OK)
+async def get_current_client(
+    current_user: CurrentUser = Depends(get_current_user),
+    client_service: ClientService = Depends(get_client_service),
+) -> ClientResponse:
+    try:
+        profile = await client_service.get_current_client(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ClientNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_response(profile)
+
+
+@router.put("/me", response_model=ClientResponse, status_code=status.HTTP_200_OK)
+async def update_current_client(
+    payload: ClientUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    client_service: ClientService = Depends(get_client_service),
+) -> ClientResponse:
+    try:
+        profile = await client_service.update_current_client(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+            phone_number=payload.phone_number,
+            timezone=payload.timezone,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ClientNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return _to_response(profile)
 
@@ -139,6 +191,7 @@ async def list_clients(
     try:
         result = await client_service.list_clients(
             actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
             page=page,
             page_size=page_size,
         )

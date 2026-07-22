@@ -7,8 +7,10 @@ import pytest
 from core.constants import RoleName
 from core.security import hash_password, verify_password
 from models.client import Client
+from models.client_trainer_assignment import ClientTrainerAssignment
 from models.role import Role
 from models.user import User
+from repositories.assignment_repository import AssignmentRepository
 from repositories.client_repository import ClientRecord, ClientRepository
 from repositories.role_repository import RoleRepository
 from repositories.user_repository import UserRepository
@@ -66,10 +68,14 @@ class FakeClientRepository(ClientRepository):
     def __init__(self) -> None:
         self._clients: dict[uuid.UUID, Client] = {}
         self._emails: dict[uuid.UUID, str] = {}
+        self._assignments: set[tuple[uuid.UUID, uuid.UUID]] = set()
 
     def seed(self, client: Client, email: str) -> None:
         self._clients[client.id] = client
         self._emails[client.id] = email
+
+    def assign(self, trainer_id: uuid.UUID, client_id: uuid.UUID) -> None:
+        self._assignments.add((trainer_id, client_id))
 
     async def create(self, client: Client) -> Client:
         now = datetime.now(timezone.utc)
@@ -105,6 +111,66 @@ class FakeClientRepository(ClientRepository):
         records = [ClientRecord(client=c, email=self._emails.get(c.id, "")) for c in page]
         return records, len(ordered)
 
+    async def get_clients_for_trainer(
+        self, trainer_id: uuid.UUID, offset: int, limit: int
+    ) -> tuple[list[ClientRecord], int]:
+        assigned_ids = {
+            client_id for (tid, client_id) in self._assignments if tid == trainer_id
+        }
+        matched = [c for c in self._clients.values() if c.id in assigned_ids]
+        ordered = sorted(matched, key=lambda c: c.created_at, reverse=True)
+        page = ordered[offset : offset + limit]
+        records = [ClientRecord(client=c, email=self._emails.get(c.id, "")) for c in page]
+        return records, len(ordered)
+
+    async def is_client_assigned_to_trainer(
+        self, trainer_id: uuid.UUID, client_id: uuid.UUID
+    ) -> bool:
+        return (trainer_id, client_id) in self._assignments
+
+
+class FakeAssignmentRepository(AssignmentRepository):
+    def __init__(self) -> None:
+        self._trainer_id_by_user_id: dict[uuid.UUID, uuid.UUID] = {}
+
+    def set_trainer(self, user_id: uuid.UUID, trainer_id: uuid.UUID) -> None:
+        self._trainer_id_by_user_id[user_id] = trainer_id
+
+    async def client_exists(self, client_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    async def trainer_exists(self, trainer_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    async def exists_for_pair(self, client_id: uuid.UUID, trainer_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    async def client_has_primary_trainer(self, client_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    async def create(self, assignment: ClientTrainerAssignment) -> ClientTrainerAssignment:
+        raise NotImplementedError
+
+    async def get_by_id(self, assignment_id: uuid.UUID) -> ClientTrainerAssignment | None:
+        raise NotImplementedError
+
+    async def delete(self, assignment_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
+    async def list_paginated(
+        self, offset: int, limit: int
+    ) -> tuple[list[ClientTrainerAssignment], int]:
+        raise NotImplementedError
+
+    async def get_trainer_id_by_user_id(self, user_id: uuid.UUID) -> uuid.UUID | None:
+        return self._trainer_id_by_user_id.get(user_id)
+
+    async def list_clients_for_trainer(self, trainer_id: uuid.UUID):
+        raise NotImplementedError
+
+    async def list_trainers_for_client(self, client_id: uuid.UUID):
+        raise NotImplementedError
+
 
 def _make_client(user_id: uuid.UUID, **overrides) -> Client:
     now = datetime.now(timezone.utc)
@@ -124,16 +190,25 @@ def _make_client(user_id: uuid.UUID, **overrides) -> Client:
     return Client(**defaults)
 
 
-def _make_service() -> tuple[ClientService, FakeClientRepository, FakeUserRepository, FakeRoleRepository]:
+def _make_service() -> tuple[
+    ClientService,
+    FakeClientRepository,
+    FakeUserRepository,
+    FakeRoleRepository,
+    FakeAssignmentRepository,
+]:
     client_repository = FakeClientRepository()
     user_repository = FakeUserRepository()
     role_repository = FakeRoleRepository()
-    service = ClientService(client_repository, user_repository, role_repository)
-    return service, client_repository, user_repository, role_repository
+    assignment_repository = FakeAssignmentRepository()
+    service = ClientService(
+        client_repository, user_repository, role_repository, assignment_repository
+    )
+    return service, client_repository, user_repository, role_repository, assignment_repository
 
 
 def test_create_client_succeeds_for_super_admin():
-    service, client_repository, user_repository, role_repository = _make_service()
+    service, client_repository, user_repository, role_repository, _ = _make_service()
     actor_id = uuid.uuid4()
 
     profile = asyncio.run(
@@ -180,7 +255,7 @@ def test_create_client_rejects_non_super_admin():
 
 
 def test_create_client_rejects_duplicate_email():
-    service, client_repository, user_repository, role_repository = _make_service()
+    service, client_repository, user_repository, role_repository, _ = _make_service()
     asyncio.run(user_repository.create(email="client@example.com", password_hash=hash_password("Str0ngPassword!")))
 
     with pytest.raises(EmailAlreadyExistsError):
@@ -211,31 +286,51 @@ def test_get_client_succeeds_for_super_admin():
     assert profile.email == "client@example.com"
 
 
-def test_get_client_succeeds_for_owning_client():
+def test_get_client_rejects_client_role():
+    """Task-15.4: CLIENT users SHALL NOT use GET /clients/{id}, even for their own profile."""
     service, client_repository, *_ = _make_service()
     user_id = uuid.uuid4()
     client = _make_client(user_id=user_id)
     client_repository.seed(client, "client@example.com")
 
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.get_client(actor_role=RoleName.CLIENT, actor_id=user_id, client_id=client.id)
+        )
+
+
+def test_get_client_succeeds_for_assigned_trainer():
+    service, client_repository, _, _, assignment_repository = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer_id = uuid.uuid4()
+    assignment_repository.set_trainer(trainer_user_id, trainer_id)
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    client_repository.assign(trainer_id, client.id)
+
     profile = asyncio.run(
-        service.get_client(actor_role=RoleName.CLIENT, actor_id=user_id, client_id=client.id)
+        service.get_client(actor_role=RoleName.TRAINER, actor_id=trainer_user_id, client_id=client.id)
     )
 
     assert profile.id == client.id
 
 
-def test_get_client_rejects_other_client():
-    service, client_repository, *_ = _make_service()
+def test_get_client_rejects_unassigned_trainer():
+    service, client_repository, _, _, assignment_repository = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer_id = uuid.uuid4()
+    assignment_repository.set_trainer(trainer_user_id, trainer_id)
     client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
+    # Note: no assignment created between trainer_id and client.id.
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.get_client(actor_role=RoleName.CLIENT, actor_id=uuid.uuid4(), client_id=client.id)
+            service.get_client(actor_role=RoleName.TRAINER, actor_id=trainer_user_id, client_id=client.id)
         )
 
 
-def test_get_client_rejects_trainer():
+def test_get_client_rejects_trainer_without_profile():
     service, client_repository, *_ = _make_service()
     client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
@@ -257,14 +352,13 @@ def test_get_client_raises_not_found_for_missing_client():
 
 def test_update_client_applies_only_provided_fields():
     service, client_repository, *_ = _make_service()
-    user_id = uuid.uuid4()
-    client = _make_client(user_id=user_id, first_name="Jane", last_name="Doe")
+    client = _make_client(user_id=uuid.uuid4(), first_name="Jane", last_name="Doe")
     client_repository.seed(client, "client@example.com")
 
     profile = asyncio.run(
         service.update_client(
-            actor_role=RoleName.CLIENT,
-            actor_id=user_id,
+            actor_role=RoleName.SUPER_ADMIN,
+            actor_id=uuid.uuid4(),
             client_id=client.id,
             first_name="Janet",
             last_name=None,
@@ -277,16 +371,42 @@ def test_update_client_applies_only_provided_fields():
     assert profile.last_name == "Doe"
 
 
-def test_update_client_rejects_other_client():
+def test_update_client_rejects_client_role():
+    """Task-15.4: CLIENT must use PUT /clients/me instead of PUT /clients/{id}."""
     service, client_repository, *_ = _make_service()
-    client = _make_client(user_id=uuid.uuid4())
+    user_id = uuid.uuid4()
+    client = _make_client(user_id=user_id)
     client_repository.seed(client, "client@example.com")
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
             service.update_client(
                 actor_role=RoleName.CLIENT,
-                actor_id=uuid.uuid4(),
+                actor_id=user_id,
+                client_id=client.id,
+                first_name="Janet",
+                last_name=None,
+                phone_number=None,
+                timezone=None,
+            )
+        )
+
+
+def test_update_client_rejects_trainer_role():
+    """Trainers remain READ-ONLY in Version-1, even for assigned clients."""
+    service, client_repository, _, _, assignment_repository = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer_id = uuid.uuid4()
+    assignment_repository.set_trainer(trainer_user_id, trainer_id)
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    client_repository.assign(trainer_id, client.id)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_client(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
                 client_id=client.id,
                 first_name="Hacker",
                 last_name=None,
@@ -301,7 +421,9 @@ def test_list_clients_succeeds_for_super_admin_with_pagination():
     for _ in range(5):
         client_repository.seed(_make_client(user_id=uuid.uuid4()), "client@example.com")
 
-    result = asyncio.run(service.list_clients(actor_role=RoleName.SUPER_ADMIN, page=1, page_size=2))
+    result = asyncio.run(
+        service.list_clients(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), page=1, page_size=2)
+    )
 
     assert result.total == 5
     assert len(result.items) == 2
@@ -313,11 +435,128 @@ def test_list_clients_rejects_client_role():
     service, *_ = _make_service()
 
     with pytest.raises(ForbiddenError):
-        asyncio.run(service.list_clients(actor_role=RoleName.CLIENT, page=1, page_size=20))
+        asyncio.run(
+            service.list_clients(actor_role=RoleName.CLIENT, actor_id=uuid.uuid4(), page=1, page_size=20)
+        )
 
 
-def test_list_clients_rejects_trainer_role():
+def test_list_clients_returns_only_assigned_clients_for_trainer():
+    service, client_repository, _, _, assignment_repository = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer_id = uuid.uuid4()
+    assignment_repository.set_trainer(trainer_user_id, trainer_id)
+
+    assigned_client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(assigned_client, "assigned@example.com")
+    client_repository.assign(trainer_id, assigned_client.id)
+
+    unassigned_client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(unassigned_client, "unassigned@example.com")
+
+    result = asyncio.run(
+        service.list_clients(actor_role=RoleName.TRAINER, actor_id=trainer_user_id, page=1, page_size=20)
+    )
+
+    assert result.total == 1
+    assert [item.id for item in result.items] == [assigned_client.id]
+
+
+def test_list_clients_rejects_trainer_without_profile():
     service, *_ = _make_service()
 
     with pytest.raises(ForbiddenError):
-        asyncio.run(service.list_clients(actor_role=RoleName.TRAINER, page=1, page_size=20))
+        asyncio.run(
+            service.list_clients(actor_role=RoleName.TRAINER, actor_id=uuid.uuid4(), page=1, page_size=20)
+        )
+
+
+def test_get_current_client_succeeds_for_client():
+    service, client_repository, *_ = _make_service()
+    user_id = uuid.uuid4()
+    client = _make_client(user_id=user_id)
+    client_repository.seed(client, "client@example.com")
+
+    profile = asyncio.run(service.get_current_client(actor_role=RoleName.CLIENT, actor_id=user_id))
+
+    assert profile.id == client.id
+    assert profile.email == "client@example.com"
+
+
+def test_get_current_client_rejects_super_admin():
+    service, client_repository, *_ = _make_service()
+    user_id = uuid.uuid4()
+    client = _make_client(user_id=user_id)
+    client_repository.seed(client, "client@example.com")
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(service.get_current_client(actor_role=RoleName.SUPER_ADMIN, actor_id=user_id))
+
+
+def test_get_current_client_rejects_trainer():
+    service, *_ = _make_service()
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(service.get_current_client(actor_role=RoleName.TRAINER, actor_id=uuid.uuid4()))
+
+
+def test_get_current_client_raises_not_found_when_no_profile():
+    service, *_ = _make_service()
+
+    with pytest.raises(ClientNotFoundError):
+        asyncio.run(service.get_current_client(actor_role=RoleName.CLIENT, actor_id=uuid.uuid4()))
+
+
+def test_update_current_client_applies_only_provided_fields():
+    service, client_repository, *_ = _make_service()
+    user_id = uuid.uuid4()
+    client = _make_client(user_id=user_id, first_name="Jane", last_name="Doe")
+    client_repository.seed(client, "client@example.com")
+
+    profile = asyncio.run(
+        service.update_current_client(
+            actor_role=RoleName.CLIENT,
+            actor_id=user_id,
+            first_name="Janet",
+            last_name=None,
+            phone_number=None,
+            timezone=None,
+        )
+    )
+
+    assert profile.first_name == "Janet"
+    assert profile.last_name == "Doe"
+
+
+def test_update_current_client_rejects_super_admin():
+    service, client_repository, *_ = _make_service()
+    user_id = uuid.uuid4()
+    client = _make_client(user_id=user_id)
+    client_repository.seed(client, "client@example.com")
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_current_client(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=user_id,
+                first_name="Hacker",
+                last_name=None,
+                phone_number=None,
+                timezone=None,
+            )
+        )
+
+
+def test_update_current_client_rejects_trainer():
+    service, *_ = _make_service()
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_current_client(
+                actor_role=RoleName.TRAINER,
+                actor_id=uuid.uuid4(),
+                first_name="Hacker",
+                last_name=None,
+                phone_number=None,
+                timezone=None,
+            )
+        )
