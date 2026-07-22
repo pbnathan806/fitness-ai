@@ -49,6 +49,9 @@ class TrainerProfile(Base):
     user: Mapped["User"] = relationship(  # noqa: F821
         "User", foreign_keys=[user_id], uselist=False, back_populates="trainer_profile"
     )
+    client_assignments: Mapped[list["ClientTrainerAssignment"]] = relationship(  # noqa: F821
+        "ClientTrainerAssignment", foreign_keys="ClientTrainerAssignment.trainer_id", back_populates="trainer"
+    )
 
     def __repr__(self) -> str:
         return f"TrainerProfile(id={self.id!r}, user_id={self.user_id!r})"

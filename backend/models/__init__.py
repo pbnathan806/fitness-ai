@@ -1,4 +1,5 @@
 from models.client import Client
+from models.client_trainer_assignment import ClientTrainerAssignment
 from models.password_reset_token import PasswordResetToken
 from models.role import Role
 from models.trainer_profile import TrainerProfile
@@ -7,6 +8,7 @@ from models.user_role import UserRole
 
 __all__ = [
     "Client",
+    "ClientTrainerAssignment",
     "PasswordResetToken",
     "Role",
     "TrainerProfile",
