@@ -18,6 +18,9 @@ class UserRepository(ABC):
     @abstractmethod
     async def update_last_login(self, user_id: uuid.UUID, login_time: datetime) -> None: ...
 
+    @abstractmethod
+    async def update_password_hash(self, user_id: uuid.UUID, password_hash: str) -> None: ...
+
 
 class SQLAlchemyUserRepository(UserRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -30,5 +33,11 @@ class SQLAlchemyUserRepository(UserRepository):
     async def update_last_login(self, user_id: uuid.UUID, login_time: datetime) -> None:
         await self._session.execute(
             update(User).where(User.id == user_id).values(last_login_at=login_time)
+        )
+        await self._session.commit()
+
+    async def update_password_hash(self, user_id: uuid.UUID, password_hash: str) -> None:
+        await self._session.execute(
+            update(User).where(User.id == user_id).values(password_hash=password_hash)
         )
         await self._session.commit()

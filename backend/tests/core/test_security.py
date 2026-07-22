@@ -7,7 +7,9 @@ from core.config import settings
 from core.security import (
     create_access_token,
     decode_access_token,
+    generate_password_reset_token,
     hash_password,
+    hash_reset_token,
     verify_password,
 )
 
@@ -132,3 +134,28 @@ def test_decode_access_token_raises_on_expired_token():
 
     with pytest.raises(jwt.ExpiredSignatureError):
         decode_access_token(expired_token)
+
+
+def test_generate_password_reset_token_returns_unique_high_entropy_values():
+    token_one = generate_password_reset_token()
+    token_two = generate_password_reset_token()
+
+    assert token_one != token_two
+    assert len(token_one) >= 32
+
+
+def test_hash_reset_token_is_deterministic():
+    token = generate_password_reset_token()
+
+    assert hash_reset_token(token) == hash_reset_token(token)
+
+
+def test_hash_reset_token_differs_from_raw_token():
+    token = generate_password_reset_token()
+
+    assert hash_reset_token(token) != token
+
+
+def test_hash_reset_token_rejects_empty_token():
+    with pytest.raises(ValueError):
+        hash_reset_token("")

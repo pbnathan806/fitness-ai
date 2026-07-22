@@ -24,6 +24,9 @@ class FakeUserRepository(UserRepository):
     async def update_last_login(self, user_id: uuid.UUID, login_time: datetime) -> None:
         self.last_login_calls.append((user_id, login_time))
 
+    async def update_password_hash(self, user_id: uuid.UUID, password_hash: str) -> None:
+        raise NotImplementedError
+
 
 class FakeRoleRepository(RoleRepository):
     def __init__(self, roles: list[str]) -> None:
