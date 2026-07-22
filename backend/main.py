@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.session import check_database_connection, dispose_engine
+from routers.assignments import router as assignments_router
 from routers.auth import router as auth_router
 from routers.clients import router as clients_router
 
@@ -26,6 +27,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Fitness AI Platform", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(clients_router)
+app.include_router(assignments_router)
 
 
 @app.get("/")
