@@ -27,6 +27,9 @@ class FakeUserRepository(UserRepository):
     async def update_password_hash(self, user_id: uuid.UUID, password_hash: str) -> None:
         raise NotImplementedError
 
+    async def create(self, email: str, password_hash: str) -> User:
+        raise NotImplementedError
+
 
 class FakeRoleRepository(RoleRepository):
     def __init__(self, roles: list[str]) -> None:
@@ -34,6 +37,12 @@ class FakeRoleRepository(RoleRepository):
 
     async def get_role_names_for_user(self, user_id: uuid.UUID) -> list[str]:
         return self._roles
+
+    async def get_by_name(self, name: str) -> None:
+        raise NotImplementedError
+
+    async def assign_role_to_user(self, user_id: uuid.UUID, role_id: uuid.UUID) -> None:
+        raise NotImplementedError
 
 
 def _make_user(email: str, password: str) -> User:

@@ -34,6 +34,9 @@ class FakeUserRepository(UserRepository):
         if self._user is not None and self._user.id == user_id:
             self._user.password_hash = password_hash
 
+    async def create(self, email: str, password_hash: str) -> User:
+        raise NotImplementedError
+
 
 class FakePasswordResetTokenRepository(PasswordResetTokenRepository):
     def __init__(self) -> None:
