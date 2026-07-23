@@ -1,3 +1,4 @@
+from models.check_in import CheckIn
 from models.client import Client
 from models.client_trainer_assignment import ClientTrainerAssignment
 from models.measurement import Measurement
@@ -20,6 +21,7 @@ from models.user import User
 from models.user_role import UserRole
 
 __all__ = [
+    "CheckIn",
     "Client",
     "ClientTrainerAssignment",
     "Measurement",
