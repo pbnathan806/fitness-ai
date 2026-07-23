@@ -173,7 +173,7 @@ def test_update_subscription_plan_succeeds_for_super_admin():
     assert body["is_active"] is False
 
 
-def test_update_subscription_plan_ignores_immutable_fields():
+def test_update_subscription_plan_rejects_immutable_name():
     repository = FakeSubscriptionPlanRepository()
     plan = _make_plan(name="Premium", duration_days=30, currency="USD")
     repository.seed(plan)
@@ -182,20 +182,43 @@ def test_update_subscription_plan_ignores_immutable_fields():
 
     response = test_client.put(
         f"/api/v1/subscription-plans/{plan.id}",
-        json={
-            "name": "Renamed",
-            "duration_days": 60,
-            "currency": "EUR",
-            "description": "New description.",
-        },
+        json={"name": "Elite"},
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["name"] == "Premium"
-    assert body["duration_days"] == 30
-    assert body["currency"] == "USD"
-    assert body["description"] == "New description."
+    assert response.status_code == 400
+    assert response.json() == {"detail": "name is immutable and cannot be updated."}
+
+
+def test_update_subscription_plan_rejects_immutable_duration_days():
+    repository = FakeSubscriptionPlanRepository()
+    plan = _make_plan(name="Premium", duration_days=30, currency="USD")
+    repository.seed(plan)
+    _override_dependencies(repository, uuid.uuid4(), RoleName.SUPER_ADMIN)
+    test_client = TestClient(app)
+
+    response = test_client.put(
+        f"/api/v1/subscription-plans/{plan.id}",
+        json={"duration_days": 90},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "duration_days is immutable and cannot be updated."}
+
+
+def test_update_subscription_plan_rejects_immutable_currency():
+    repository = FakeSubscriptionPlanRepository()
+    plan = _make_plan(name="Premium", duration_days=30, currency="USD")
+    repository.seed(plan)
+    _override_dependencies(repository, uuid.uuid4(), RoleName.SUPER_ADMIN)
+    test_client = TestClient(app)
+
+    response = test_client.put(
+        f"/api/v1/subscription-plans/{plan.id}",
+        json={"currency": "EUR"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "currency is immutable and cannot be updated."}
 
 
 def test_update_subscription_plan_rejects_trainer_role():

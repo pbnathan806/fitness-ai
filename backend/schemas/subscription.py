@@ -60,8 +60,21 @@ class SubscriptionEligibilityResponse(BaseModel):
 
 
 class SubscriptionUpdateRequest(BaseModel):
+    """Immutable fields (client_id, subscription_plan_id, plan_name, plan_price,
+    plan_currency, plan_duration_days, start_date) are accepted here only so
+    the service layer can detect and reject attempts to change them; they are
+    never applied to the underlying subscription.
+    """
+
     status: SubscriptionStatus | None = None
     payment_status: SubscriptionPaymentStatus | None = None
     end_date: date | None = None
     auto_renew: bool | None = None
     notes: str | None = None
+    client_id: uuid.UUID | None = None
+    subscription_plan_id: uuid.UUID | None = None
+    plan_name: str | None = None
+    plan_price: float | None = None
+    plan_currency: str | None = None
+    plan_duration_days: int | None = None
+    start_date: date | None = None

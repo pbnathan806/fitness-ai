@@ -10,6 +10,7 @@ from repositories.subscription_plan_repository import SubscriptionPlanRepository
 from services.subscription_plan_service import (
     DuplicatePlanNameError,
     ForbiddenError,
+    ImmutableFieldError,
     SubscriptionPlanNotFoundError,
     SubscriptionPlanService,
 )
@@ -194,6 +195,25 @@ def test_update_plan_does_not_change_immutable_fields_when_not_supplied():
     assert detail.duration_days == 30
     assert detail.currency == "USD"
     assert detail.description == "Updated description."
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("name", "Elite"), ("duration_days", 90), ("currency", "EUR")],
+)
+def test_update_plan_rejects_immutable_fields(field, value):
+    service, repository = _make_service()
+    plan = _make_plan(name="Premium", duration_days=30, currency="USD")
+    repository.seed(plan)
+
+    with pytest.raises(ImmutableFieldError):
+        asyncio.run(
+            service.update_plan(
+                actor_role=RoleName.SUPER_ADMIN,
+                plan_id=plan.id,
+                values={field: value},
+            )
+        )
 
 
 def test_update_plan_rejects_non_super_admin():

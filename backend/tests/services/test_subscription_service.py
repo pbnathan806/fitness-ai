@@ -12,6 +12,7 @@ from services.subscription_service import (
     ActiveSubscriptionExistsError,
     ClientNotFoundError,
     ForbiddenError,
+    ImmutableFieldError,
     SubscriptionNotFoundError,
     SubscriptionPlanNotFoundError,
     SubscriptionService,
@@ -503,6 +504,33 @@ def test_update_subscription_does_not_change_immutable_fields_when_not_supplied(
     assert detail.subscription_plan_id == plan_id
     assert detail.plan_name == "Premium"
     assert detail.auto_renew is True
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("client_id", str(uuid.uuid4())),
+        ("subscription_plan_id", str(uuid.uuid4())),
+        ("plan_name", "Elite"),
+        ("plan_price", 199.99),
+        ("plan_currency", "EUR"),
+        ("plan_duration_days", 90),
+        ("start_date", date(2026, 1, 1)),
+    ],
+)
+def test_update_subscription_rejects_immutable_fields(field, value):
+    service, subscription_repository, _, _, _ = _make_service()
+    subscription = _make_subscription(uuid.uuid4(), uuid.uuid4())
+    subscription_repository.seed(subscription)
+
+    with pytest.raises(ImmutableFieldError):
+        asyncio.run(
+            service.update_subscription(
+                actor_role=RoleName.SUPER_ADMIN,
+                subscription_id=subscription.id,
+                values={field: value},
+            )
+        )
 
 
 def test_update_subscription_rejects_non_super_admin():

@@ -469,7 +469,7 @@ def test_update_subscription_succeeds_for_super_admin():
     assert body["notes"] == "Client requested cancellation."
 
 
-def test_update_subscription_ignores_immutable_fields():
+def test_update_subscription_rejects_immutable_client_id():
     subscription_repository, plan_repository, client_repository, assignment_repository = (
         _make_repos()
     )
@@ -491,10 +491,34 @@ def test_update_subscription_ignores_immutable_fields():
         json={"client_id": str(uuid.uuid4()), "auto_renew": True},
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["client_id"] == str(client_id)
-    assert body["auto_renew"] is True
+    assert response.status_code == 400
+    assert response.json() == {"detail": "client_id is immutable and cannot be updated."}
+
+
+def test_update_subscription_rejects_immutable_start_date():
+    subscription_repository, plan_repository, client_repository, assignment_repository = (
+        _make_repos()
+    )
+    client_id = uuid.uuid4()
+    subscription = _make_subscription(client_id, uuid.uuid4(), plan_name="Premium")
+    subscription_repository.seed(subscription)
+    _override_dependencies(
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/subscriptions/{subscription.id}",
+        json={"start_date": "2026-01-01"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "start_date is immutable and cannot be updated."}
 
 
 def test_update_subscription_rejects_trainer_role():

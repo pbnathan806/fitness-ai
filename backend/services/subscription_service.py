@@ -1,7 +1,6 @@
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from core.constants import RoleName
 from models.subscription import Subscription, SubscriptionPaymentStatus, SubscriptionStatus
@@ -9,10 +8,19 @@ from repositories.assignment_repository import AssignmentRepository
 from repositories.client_repository import ClientRepository
 from repositories.subscription_plan_repository import SubscriptionPlanRepository
 from repositories.subscription_repository import SubscriptionRepository
+from utils.subscription import can_schedule_sessions, current_india_date
 
-# Trainers and Super Admins operate in Asia/Kolkata per TIMEZONE_REQUIREMENTS.md;
-# eligibility and default start dates are evaluated from that perspective.
-_ADMIN_TIMEZONE = ZoneInfo("Asia/Kolkata")
+# Snapshot/identity fields fixed at creation time; update payloads must not
+# change them (Task-16.3.1).
+_IMMUTABLE_SUBSCRIPTION_FIELDS = (
+    "client_id",
+    "subscription_plan_id",
+    "plan_name",
+    "plan_price",
+    "plan_currency",
+    "plan_duration_days",
+    "start_date",
+)
 
 
 class ForbiddenError(Exception):
@@ -39,8 +47,8 @@ class TrainerNotAssignedError(Exception):
     """Raised when a trainer requests eligibility for a client they are not assigned to."""
 
 
-def _today() -> date:
-    return datetime.now(_ADMIN_TIMEZONE).date()
+class ImmutableFieldError(Exception):
+    """Raised when an update payload attempts to change an immutable field."""
 
 
 @dataclass(frozen=True)
@@ -177,7 +185,7 @@ class SubscriptionService:
                 f"Client '{client_id}' already has an ACTIVE subscription."
             )
 
-        effective_start_date = start_date or _today()
+        effective_start_date = start_date or current_india_date()
         subscription = await self._subscription_repository.create(
             Subscription(
                 client_id=client_id,
@@ -261,16 +269,12 @@ class SubscriptionService:
         if subscription is None:
             raise SubscriptionNotFoundError(f"Client '{client_id}' has no subscriptions.")
 
-        can_schedule_sessions = (
-            subscription.status == SubscriptionStatus.ACTIVE
-            and subscription.end_date >= _today()
-        )
         return SubscriptionEligibility(
             client_id=client_id,
             plan_name=subscription.plan_name,
             status=subscription.status,
             end_date=subscription.end_date,
-            can_schedule_sessions=can_schedule_sessions,
+            can_schedule_sessions=can_schedule_sessions(subscription),
         )
 
     async def update_subscription(
@@ -278,6 +282,10 @@ class SubscriptionService:
     ) -> SubscriptionDetail:
         if actor_role != RoleName.SUPER_ADMIN:
             raise ForbiddenError("Only Super Admins may update subscriptions.")
+
+        for field in _IMMUTABLE_SUBSCRIPTION_FIELDS:
+            if field in values:
+                raise ImmutableFieldError(f"{field} is immutable and cannot be updated.")
 
         if await self._subscription_repository.get_by_id(subscription_id) is None:
             raise SubscriptionNotFoundError(f"Subscription '{subscription_id}' was not found.")

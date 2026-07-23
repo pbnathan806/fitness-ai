@@ -6,6 +6,9 @@ from core.constants import RoleName
 from models.subscription_plan import SubscriptionPlan
 from repositories.subscription_plan_repository import SubscriptionPlanRepository
 
+# Fixed at creation time; update payloads must not change them (Task-16.3.1).
+_IMMUTABLE_PLAN_FIELDS = ("name", "duration_days", "currency")
+
 
 class ForbiddenError(Exception):
     """Raised when the acting user's role does not permit the requested action."""
@@ -17,6 +20,10 @@ class SubscriptionPlanNotFoundError(Exception):
 
 class DuplicatePlanNameError(Exception):
     """Raised when a subscription plan with the requested name already exists."""
+
+
+class ImmutableFieldError(Exception):
+    """Raised when an update payload attempts to change an immutable field."""
 
 
 @dataclass(frozen=True)
@@ -105,6 +112,10 @@ class SubscriptionPlanService:
     ) -> SubscriptionPlanDetail:
         if actor_role != RoleName.SUPER_ADMIN:
             raise ForbiddenError("Only Super Admins may update subscription plans.")
+
+        for field in _IMMUTABLE_PLAN_FIELDS:
+            if field in values:
+                raise ImmutableFieldError(f"{field} is immutable and cannot be updated.")
 
         if await self._subscription_plan_repository.get_by_id(plan_id) is None:
             raise SubscriptionPlanNotFoundError(f"Subscription plan '{plan_id}' was not found.")
