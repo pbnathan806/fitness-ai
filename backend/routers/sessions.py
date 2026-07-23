@@ -21,13 +21,16 @@ from repositories.subscription_repository import (
 )
 from schemas.session import (
     PaginatedSessionsResponse,
+    SessionAttendanceUpdateRequest,
     SessionBulkCreateRequest,
     SessionBulkCreateResponse,
     SessionCreateRequest,
+    SessionNotesUpdateRequest,
     SessionResponse,
     SessionUpdateRequest,
 )
 from services.session_service import (
+    AttendanceImmutableError,
     ClientNotFoundError,
     ClientOverlapError,
     ForbiddenError,
@@ -101,7 +104,9 @@ def _to_response(detail: SessionDetail) -> SessionResponse:
         meeting_type=detail.meeting_type,
         meeting_link=detail.meeting_link,
         trainer_notes=detail.trainer_notes,
-        client_notes=detail.client_notes,
+        trainer_feedback=detail.trainer_feedback,
+        homework=detail.homework,
+        next_session_focus=detail.next_session_focus,
         attendance_status=detail.attendance_status,
         created_at=detail.created_at,
         updated_at=detail.updated_at,
@@ -270,5 +275,76 @@ async def update_session(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except SessionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AttendanceImmutableError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return _to_response(detail)
+
+
+@router.patch(
+    "/{session_id}/notes", response_model=SessionResponse, status_code=status.HTTP_200_OK
+)
+async def update_session_notes(
+    session_id: uuid.UUID,
+    payload: SessionNotesUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    session_service: SessionService = Depends(get_session_service),
+) -> SessionResponse:
+    values = payload.model_dump(exclude_unset=True)
+    try:
+        detail = await session_service.update_session_notes(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            session_id=session_id,
+            values=values,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_response(detail)
+
+
+@router.patch(
+    "/{session_id}/attendance", response_model=SessionResponse, status_code=status.HTTP_200_OK
+)
+async def update_session_attendance(
+    session_id: uuid.UUID,
+    payload: SessionAttendanceUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    session_service: SessionService = Depends(get_session_service),
+) -> SessionResponse:
+    try:
+        detail = await session_service.update_session_attendance(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            session_id=session_id,
+            attendance_status=payload.attendance_status,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AttendanceImmutableError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return _to_response(detail)
+
+
+@router.get("/{session_id}/summary", status_code=status.HTTP_200_OK)
+async def get_session_summary(
+    session_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    session_service: SessionService = Depends(get_session_service),
+) -> dict:
+    try:
+        return await session_service.get_session_summary(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            session_id=session_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

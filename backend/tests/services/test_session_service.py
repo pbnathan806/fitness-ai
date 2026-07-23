@@ -6,10 +6,11 @@ import pytest
 
 from core.constants import RoleName
 from models.client_trainer_assignment import ClientTrainerAssignment
-from models.session import Session, SessionMeetingType, SessionStatus
+from models.session import Session, SessionAttendanceStatus, SessionMeetingType, SessionStatus
 from models.subscription import SubscriptionStatus
 from repositories.session_repository import SessionRepository
 from services.session_service import (
+    AttendanceImmutableError,
     ClientNotFoundError,
     ClientOverlapError,
     ForbiddenError,
@@ -125,7 +126,9 @@ def _make_session(client_id: uuid.UUID, trainer_id: uuid.UUID, **overrides) -> S
         meeting_type=SessionMeetingType.GOOGLE_MEET,
         meeting_link=None,
         trainer_notes=None,
-        client_notes=None,
+        trainer_feedback=None,
+        homework=None,
+        next_session_focus=None,
         attendance_status=None,
         created_at=now,
         updated_at=now,
@@ -982,5 +985,348 @@ def test_update_session_raises_not_found():
                 actor_id=uuid.uuid4(),
                 session_id=uuid.uuid4(),
                 values={"status": SessionStatus.CANCELLED},
+            )
+        )
+
+
+# --- update_session_notes -----------------------------------------------------
+
+
+def test_update_session_notes_succeeds_for_owning_trainer():
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), trainer.id)
+    session_repository.seed(session)
+
+    detail = asyncio.run(
+        service.update_session_notes(
+            actor_role=RoleName.TRAINER,
+            actor_id=trainer_user_id,
+            session_id=session.id,
+            values={
+                "trainer_notes": "Improved endurance.",
+                "trainer_feedback": "Consistency improving.",
+                "homework": "Walk 10,000 steps daily.",
+                "next_session_focus": "Core strengthening.",
+            },
+        )
+    )
+
+    assert detail.trainer_notes == "Improved endurance."
+    assert detail.trainer_feedback == "Consistency improving."
+    assert detail.homework == "Walk 10,000 steps daily."
+    assert detail.next_session_focus == "Core strengthening."
+
+
+def test_update_session_notes_succeeds_for_super_admin():
+    service, session_repository, *_ = _make_service()
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    detail = asyncio.run(
+        service.update_session_notes(
+            actor_role=RoleName.SUPER_ADMIN,
+            actor_id=uuid.uuid4(),
+            session_id=session.id,
+            values={"homework": "Stretch daily."},
+        )
+    )
+
+    assert detail.homework == "Stretch daily."
+
+
+def test_update_session_notes_rejects_non_owning_trainer():
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session_notes(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                session_id=session.id,
+                values={"trainer_notes": "Should not be applied."},
+            )
+        )
+
+
+def test_update_session_notes_rejects_client_role():
+    service, session_repository, *_ = _make_service()
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session_notes(
+                actor_role=RoleName.CLIENT,
+                actor_id=uuid.uuid4(),
+                session_id=session.id,
+                values={"trainer_notes": "Should not be applied."},
+            )
+        )
+
+
+def test_update_session_notes_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(SessionNotFoundError):
+        asyncio.run(
+            service.update_session_notes(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                session_id=uuid.uuid4(),
+                values={"homework": "Stretch daily."},
+            )
+        )
+
+
+# --- update_session_attendance -------------------------------------------------
+
+
+def test_update_session_attendance_succeeds_for_owning_trainer():
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), trainer.id)
+    session_repository.seed(session)
+
+    detail = asyncio.run(
+        service.update_session_attendance(
+            actor_role=RoleName.TRAINER,
+            actor_id=trainer_user_id,
+            session_id=session.id,
+            attendance_status=SessionAttendanceStatus.BOTH_PRESENT,
+        )
+    )
+
+    assert detail.attendance_status == SessionAttendanceStatus.BOTH_PRESENT
+
+
+def test_update_session_attendance_succeeds_for_super_admin():
+    service, session_repository, *_ = _make_service()
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    detail = asyncio.run(
+        service.update_session_attendance(
+            actor_role=RoleName.SUPER_ADMIN,
+            actor_id=uuid.uuid4(),
+            session_id=session.id,
+            attendance_status=SessionAttendanceStatus.LATE,
+        )
+    )
+
+    assert detail.attendance_status == SessionAttendanceStatus.LATE
+
+
+def test_update_session_attendance_rejects_non_owning_trainer():
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session_attendance(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                session_id=session.id,
+                attendance_status=SessionAttendanceStatus.PRESENT,
+            )
+        )
+
+
+def test_update_session_attendance_rejects_client_role():
+    service, session_repository, *_ = _make_service()
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session_attendance(
+                actor_role=RoleName.CLIENT,
+                actor_id=uuid.uuid4(),
+                session_id=session.id,
+                attendance_status=SessionAttendanceStatus.PRESENT,
+            )
+        )
+
+
+def test_update_session_attendance_rejects_once_completed():
+    service, session_repository, *_ = _make_service()
+    session = _make_session(uuid.uuid4(), uuid.uuid4(), status=SessionStatus.COMPLETED)
+    session_repository.seed(session)
+
+    with pytest.raises(AttendanceImmutableError):
+        asyncio.run(
+            service.update_session_attendance(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                session_id=session.id,
+                attendance_status=SessionAttendanceStatus.PRESENT,
+            )
+        )
+
+
+def test_update_session_rejects_attendance_change_once_completed_via_generic_patch():
+    service, session_repository, *_ = _make_service()
+    session = _make_session(uuid.uuid4(), uuid.uuid4(), status=SessionStatus.COMPLETED)
+    session_repository.seed(session)
+
+    with pytest.raises(AttendanceImmutableError):
+        asyncio.run(
+            service.update_session(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                session_id=session.id,
+                values={"attendance_status": SessionAttendanceStatus.PRESENT},
+            )
+        )
+
+
+def test_update_session_attendance_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(SessionNotFoundError):
+        asyncio.run(
+            service.update_session_attendance(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                session_id=uuid.uuid4(),
+                attendance_status=SessionAttendanceStatus.PRESENT,
+            )
+        )
+
+
+# --- get_session_summary -------------------------------------------------------
+
+
+def _make_summary_session(client_id: uuid.UUID, trainer_id: uuid.UUID) -> Session:
+    return _make_session(
+        client_id,
+        trainer_id,
+        attendance_status=SessionAttendanceStatus.BOTH_PRESENT,
+        trainer_notes="Improved endurance.",
+        trainer_feedback="Consistency improving.",
+        homework="Walk 10,000 steps daily.",
+        next_session_focus="Core strengthening.",
+    )
+
+
+def test_get_session_summary_full_for_super_admin():
+    service, session_repository, client_repository, *_ = _make_service()
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    session = _make_summary_session(client.id, uuid.uuid4())
+    session_repository.seed(session)
+
+    summary = asyncio.run(
+        service.get_session_summary(
+            actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), session_id=session.id
+        )
+    )
+
+    assert summary["attendance_status"] == "BOTH_PRESENT"
+    assert summary["trainer_notes"] == "Improved endurance."
+    assert summary["trainer_feedback"] == "Consistency improving."
+    assert summary["homework"] == "Walk 10,000 steps daily."
+    assert summary["next_session_focus"] == "Core strengthening."
+    assert "session_date" in summary
+
+
+def test_get_session_summary_full_for_owning_trainer():
+    service, session_repository, client_repository, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    session = _make_summary_session(client.id, trainer.id)
+    session_repository.seed(session)
+
+    summary = asyncio.run(
+        service.get_session_summary(
+            actor_role=RoleName.TRAINER, actor_id=trainer_user_id, session_id=session.id
+        )
+    )
+
+    assert summary["trainer_notes"] == "Improved endurance."
+    assert summary["next_session_focus"] == "Core strengthening."
+
+
+def test_get_session_summary_rejects_non_owning_trainer():
+    service, session_repository, client_repository, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    session = _make_summary_session(client.id, uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.get_session_summary(
+                actor_role=RoleName.TRAINER, actor_id=trainer_user_id, session_id=session.id
+            )
+        )
+
+
+def test_get_session_summary_client_sees_only_homework():
+    service, session_repository, client_repository, *_ = _make_service()
+    client_user_id = uuid.uuid4()
+    client = _make_client(user_id=client_user_id)
+    client_repository.seed(client, "client@example.com")
+    session = _make_summary_session(client.id, uuid.uuid4())
+    session_repository.seed(session)
+
+    summary = asyncio.run(
+        service.get_session_summary(
+            actor_role=RoleName.CLIENT, actor_id=client_user_id, session_id=session.id
+        )
+    )
+
+    assert summary == {
+        "session_date": summary["session_date"],
+        "attendance_status": "BOTH_PRESENT",
+        "homework": "Walk 10,000 steps daily.",
+    }
+    assert "trainer_notes" not in summary
+    assert "trainer_feedback" not in summary
+    assert "next_session_focus" not in summary
+
+
+def test_get_session_summary_rejects_non_owning_client():
+    service, session_repository, client_repository, *_ = _make_service()
+    client_user_id = uuid.uuid4()
+    client = _make_client(user_id=client_user_id)
+    client_repository.seed(client, "client@example.com")
+    session = _make_summary_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.get_session_summary(
+                actor_role=RoleName.CLIENT, actor_id=client_user_id, session_id=session.id
+            )
+        )
+
+
+def test_get_session_summary_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(SessionNotFoundError):
+        asyncio.run(
+            service.get_session_summary(
+                actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), session_id=uuid.uuid4()
             )
         )

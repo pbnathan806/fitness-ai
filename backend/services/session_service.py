@@ -1,6 +1,7 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from core.constants import RoleName
 from models.session import Session, SessionAttendanceStatus, SessionMeetingType, SessionStatus
@@ -53,6 +54,10 @@ class SessionNotFoundError(Exception):
     """Raised when no session exists for the requested identifier."""
 
 
+class AttendanceImmutableError(Exception):
+    """Raised when attendance is edited after the session's status is COMPLETED."""
+
+
 @dataclass(frozen=True)
 class SessionDetail:
     id: uuid.UUID
@@ -65,7 +70,9 @@ class SessionDetail:
     meeting_type: SessionMeetingType
     meeting_link: str | None
     trainer_notes: str | None
-    client_notes: str | None
+    trainer_feedback: str | None
+    homework: str | None
+    next_session_focus: str | None
     attendance_status: SessionAttendanceStatus | None
     created_at: datetime
     updated_at: datetime
@@ -98,7 +105,9 @@ def _to_detail(session: Session) -> SessionDetail:
         meeting_type=session.meeting_type,
         meeting_link=session.meeting_link,
         trainer_notes=session.trainer_notes,
-        client_notes=session.client_notes,
+        trainer_feedback=session.trainer_feedback,
+        homework=session.homework,
+        next_session_focus=session.next_session_focus,
         attendance_status=session.attendance_status,
         created_at=session.created_at,
         updated_at=session.updated_at,
@@ -392,5 +401,110 @@ class SessionService:
             if trainer_id is None or session.trainer_id != trainer_id:
                 raise ForbiddenError("Trainers may only update their own sessions.")
 
+        if "attendance_status" in values:
+            self._ensure_attendance_mutable(session)
+
         updated = await self._session_repository.update(session_id, values)
         return _to_detail(updated)
+
+    def _ensure_attendance_mutable(self, session: Session) -> None:
+        if session.status == SessionStatus.COMPLETED:
+            raise AttendanceImmutableError(
+                "Attendance cannot be changed once the session is marked COMPLETED."
+            )
+
+    async def _authorize_trainer_write(
+        self, actor_role: str | None, actor_id: uuid.UUID, session: Session
+    ) -> None:
+        if actor_role not in (RoleName.SUPER_ADMIN, RoleName.TRAINER):
+            raise ForbiddenError("Only Trainers and Super Admins may perform this action.")
+        if actor_role == RoleName.TRAINER:
+            trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
+            if trainer_id is None or session.trainer_id != trainer_id:
+                raise ForbiddenError("Trainers may only manage their own assigned sessions.")
+
+    async def update_session_notes(
+        self, actor_role: str | None, actor_id: uuid.UUID, session_id: uuid.UUID, values: dict
+    ) -> SessionDetail:
+        if actor_role not in (RoleName.SUPER_ADMIN, RoleName.TRAINER):
+            raise ForbiddenError("Only Trainers and Super Admins may update session notes.")
+
+        session = await self._session_repository.get_by_id(session_id)
+        if session is None:
+            raise SessionNotFoundError(f"Session '{session_id}' was not found.")
+
+        await self._authorize_trainer_write(actor_role, actor_id, session)
+
+        updated = await self._session_repository.update(session_id, values)
+        return _to_detail(updated)
+
+    async def update_session_attendance(
+        self,
+        actor_role: str | None,
+        actor_id: uuid.UUID,
+        session_id: uuid.UUID,
+        attendance_status: SessionAttendanceStatus,
+    ) -> SessionDetail:
+        session = await self._session_repository.get_by_id(session_id)
+        if session is None:
+            raise SessionNotFoundError(f"Session '{session_id}' was not found.")
+
+        await self._authorize_trainer_write(actor_role, actor_id, session)
+        self._ensure_attendance_mutable(session)
+
+        updated = await self._session_repository.update(
+            session_id, {"attendance_status": attendance_status}
+        )
+        return _to_detail(updated)
+
+    async def get_session_summary(
+        self, actor_role: str | None, actor_id: uuid.UUID, session_id: uuid.UUID
+    ) -> dict:
+        session = await self._session_repository.get_by_id(session_id)
+        if session is None:
+            raise SessionNotFoundError(f"Session '{session_id}' was not found.")
+
+        if actor_role == RoleName.SUPER_ADMIN:
+            pass
+        elif actor_role == RoleName.TRAINER:
+            trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
+            if trainer_id is None or session.trainer_id != trainer_id:
+                raise ForbiddenError("Trainers may only view their own sessions.")
+        elif actor_role == RoleName.CLIENT:
+            client_record = await self._client_repository.get_by_user_id(actor_id)
+            if client_record is None or session.client_id != client_record.client.id:
+                raise ForbiddenError("Clients may only view their own sessions.")
+        else:
+            raise ForbiddenError("Not authorized to view sessions.")
+
+        session_date = await self._session_date(session)
+        attendance_status = session.attendance_status.value if session.attendance_status else None
+
+        if actor_role == RoleName.CLIENT:
+            return {
+                "session_date": session_date,
+                "attendance_status": attendance_status,
+                "homework": session.homework,
+            }
+
+        return {
+            "session_date": session_date,
+            "attendance_status": attendance_status,
+            "trainer_notes": session.trainer_notes,
+            "trainer_feedback": session.trainer_feedback,
+            "homework": session.homework,
+            "next_session_focus": session.next_session_focus,
+        }
+
+    async def _session_date(self, session: Session) -> str:
+        """The calendar date of a session, per the owning client's IANA timezone.
+
+        Per TIMEZONE_REQUIREMENTS.md the client's timezone is the source of
+        truth for scheduling, so it (not the viewer's timezone) determines
+        which calendar date a session falls on.
+        """
+        client_record = await self._client_repository.get_by_id(session.client_id)
+        if client_record is None:
+            return session.scheduled_start.date().isoformat()
+        local_start = session.scheduled_start.astimezone(ZoneInfo(client_record.client.timezone))
+        return local_start.date().isoformat()

@@ -26,9 +26,11 @@ class SessionMeetingType(str, enum.Enum):
 
 class SessionAttendanceStatus(str, enum.Enum):
     PRESENT = "PRESENT"
+    BOTH_PRESENT = "BOTH_PRESENT"
     CLIENT_NO_SHOW = "CLIENT_NO_SHOW"
     TRAINER_NO_SHOW = "TRAINER_NO_SHOW"
-    BOTH_PRESENT = "BOTH_PRESENT"
+    LATE = "LATE"
+    RESCHEDULED = "RESCHEDULED"
 
 
 class Session(Base):
@@ -87,7 +89,9 @@ class Session(Base):
     meeting_link: Mapped[str] = mapped_column(String(500), nullable=True)
 
     trainer_notes: Mapped[str] = mapped_column(Text, nullable=True)
-    client_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    trainer_feedback: Mapped[str] = mapped_column(Text, nullable=True)
+    homework: Mapped[str] = mapped_column(Text, nullable=True)
+    next_session_focus: Mapped[str] = mapped_column(Text, nullable=True)
 
     # Nullable: attendance is only known once the session has taken place,
     # so a freshly SCHEDULED session has no attendance_status yet.

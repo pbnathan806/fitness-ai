@@ -7,7 +7,7 @@ from core.constants import RoleName
 from core.deps import CurrentUser, get_current_user
 from main import app
 from models.client_trainer_assignment import ClientTrainerAssignment
-from models.session import SessionStatus
+from models.session import SessionAttendanceStatus, SessionStatus
 from models.subscription import SubscriptionStatus
 from routers.sessions import (
     get_assignment_repository,
@@ -582,3 +582,363 @@ def test_update_session_returns_404_for_missing_session():
     )
 
     assert response.status_code == 404
+
+
+# --- PATCH /{id}/notes --------------------------------------------------------
+
+
+def test_update_session_notes_succeeds_for_assigned_trainer():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), trainer.id)
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        trainer_user_id,
+        RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/notes",
+        json={
+            "trainer_notes": "Improved endurance.",
+            "trainer_feedback": "Consistency improving.",
+            "homework": "Walk 10,000 steps daily.",
+            "next_session_focus": "Core strengthening.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trainer_notes"] == "Improved endurance."
+    assert body["trainer_feedback"] == "Consistency improving."
+    assert body["homework"] == "Walk 10,000 steps daily."
+    assert body["next_session_focus"] == "Core strengthening."
+
+
+def test_update_session_notes_succeeds_for_super_admin():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/notes",
+        json={"homework": "Stretch daily."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["homework"] == "Stretch daily."
+
+
+def test_update_session_notes_rejects_unassigned_trainer():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        trainer_user_id,
+        RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/notes",
+        json={"trainer_notes": "Should not be applied."},
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_session_notes_rejects_client_role():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/notes",
+        json={"trainer_notes": "Should not be applied."},
+    )
+
+    assert response.status_code == 403
+
+
+# --- PATCH /{id}/attendance ----------------------------------------------------
+
+
+def test_update_session_attendance_succeeds_for_assigned_trainer():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _make_session(uuid.uuid4(), trainer.id)
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        trainer_user_id,
+        RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/attendance",
+        json={"attendance_status": "BOTH_PRESENT"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["attendance_status"] == "BOTH_PRESENT"
+
+
+def test_update_session_attendance_rejects_client_role():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/attendance",
+        json={"attendance_status": "PRESENT"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_session_attendance_returns_409_once_completed():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    session = _make_session(uuid.uuid4(), uuid.uuid4(), status=SessionStatus.COMPLETED)
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/sessions/{session.id}/attendance",
+        json={"attendance_status": "PRESENT"},
+    )
+
+    assert response.status_code == 409
+
+
+# --- GET /{id}/summary ----------------------------------------------------------
+
+
+def _seed_summary_session(session_repository, client_repository):
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    session = _make_session(
+        client.id,
+        uuid.uuid4(),
+        attendance_status=SessionAttendanceStatus.BOTH_PRESENT,
+        trainer_notes="Improved endurance.",
+        trainer_feedback="Consistency improving.",
+        homework="Walk 10,000 steps daily.",
+        next_session_focus="Core strengthening.",
+    )
+    session_repository.seed(session)
+    return client, session
+
+
+def test_get_session_summary_full_for_super_admin():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    client, session = _seed_summary_session(session_repository, client_repository)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/sessions/{session.id}/summary")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["attendance_status"] == "BOTH_PRESENT"
+    assert body["trainer_notes"] == "Improved endurance."
+    assert body["trainer_feedback"] == "Consistency improving."
+    assert body["homework"] == "Walk 10,000 steps daily."
+    assert body["next_session_focus"] == "Core strengthening."
+
+
+def test_get_session_summary_client_sees_only_homework():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    client_user_id = uuid.uuid4()
+    client = _make_client(user_id=client_user_id)
+    client_repository.seed(client, "client@example.com")
+    session = _make_session(
+        client.id,
+        uuid.uuid4(),
+        attendance_status=SessionAttendanceStatus.BOTH_PRESENT,
+        trainer_notes="Improved endurance.",
+        trainer_feedback="Consistency improving.",
+        homework="Walk 10,000 steps daily.",
+        next_session_focus="Core strengthening.",
+    )
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        client_user_id,
+        RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/sessions/{session.id}/summary")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["homework"] == "Walk 10,000 steps daily."
+    assert "trainer_notes" not in body
+    assert "trainer_feedback" not in body
+    assert "next_session_focus" not in body
+
+
+def test_get_session_summary_rejects_non_owning_client():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    client_user_id = uuid.uuid4()
+    client = _make_client(user_id=client_user_id)
+    client_repository.seed(client, "client@example.com")
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        client_user_id,
+        RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/sessions/{session.id}/summary")
+
+    assert response.status_code == 403
+
+
+def test_get_session_summary_returns_404_for_missing_session():
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/sessions/{uuid.uuid4()}/summary")
+
+    assert response.status_code == 404
+
+
+def test_existing_session_functionality_unaffected_by_removed_client_notes_field():
+    """Task-17.3: client_notes was removed; existing PATCH/GET flows stay backward compatible."""
+    session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_repos()
+    )
+    session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+    _override_dependencies(
+        session_repository,
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/sessions/{session.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "client_notes" not in body
+    assert body["trainer_notes"] is None
+    assert body["trainer_feedback"] is None
+    assert body["homework"] is None
+    assert body["next_session_focus"] is None

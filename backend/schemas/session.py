@@ -48,7 +48,9 @@ class SessionResponse(BaseModel):
     meeting_type: SessionMeetingType
     meeting_link: str | None
     trainer_notes: str | None
-    client_notes: str | None
+    trainer_feedback: str | None
+    homework: str | None
+    next_session_focus: str | None
     attendance_status: SessionAttendanceStatus | None
     created_at: datetime
     updated_at: datetime
@@ -76,3 +78,14 @@ class SessionUpdateRequest(BaseModel):
     meeting_link: str | None = None
     trainer_notes: str | None = None
     attendance_status: SessionAttendanceStatus | None = None
+
+
+class SessionNotesUpdateRequest(BaseModel):
+    trainer_notes: str | None = None
+    trainer_feedback: str | None = None
+    homework: str | None = None
+    next_session_focus: str | None = None
+
+
+class SessionAttendanceUpdateRequest(BaseModel):
+    attendance_status: SessionAttendanceStatus
