@@ -63,6 +63,9 @@ class Client(Base):
     sessions: Mapped[list["Session"]] = relationship(  # noqa: F821
         "Session", foreign_keys="Session.client_id", back_populates="client"
     )
+    measurements: Mapped[list["Measurement"]] = relationship(  # noqa: F821
+        "Measurement", foreign_keys="Measurement.client_id", back_populates="client"
+    )
 
     def __repr__(self) -> str:
         return f"Client(id={self.id!r}, user_id={self.user_id!r})"
