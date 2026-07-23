@@ -32,6 +32,9 @@ class SubscriptionPlan(Base):
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
     max_sessions_per_month: Mapped[int] = mapped_column(Integer, nullable=True)
+    # Weekly session commitment used as the Client dashboard's target_check_ins
+    # (Task-21). Nullable: older/simpler plans may not define a weekly cadence.
+    sessions_per_week: Mapped[int] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

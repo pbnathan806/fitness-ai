@@ -63,6 +63,9 @@ class Subscription(Base):
     plan_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     plan_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     plan_duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Snapshot of SubscriptionPlan.sessions_per_week at purchase time (Task-21);
+    # nullable because the source plan field is itself optional.
+    plan_sessions_per_week: Mapped[int] = mapped_column(Integer, nullable=True)
 
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)

@@ -1,3 +1,4 @@
+from models.application_setting import ApplicationSetting
 from models.check_in import CheckIn
 from models.client import Client
 from models.client_trainer_assignment import ClientTrainerAssignment
@@ -21,6 +22,7 @@ from models.user import User
 from models.user_role import UserRole
 
 __all__ = [
+    "ApplicationSetting",
     "CheckIn",
     "Client",
     "ClientTrainerAssignment",

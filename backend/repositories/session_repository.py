@@ -56,6 +56,17 @@ class SessionRepository(ABC):
     @abstractmethod
     async def count_active_for_client(self, client_id: uuid.UUID) -> int: ...
 
+    @abstractmethod
+    async def count_in_range(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        exclude_cancelled: bool = False,
+    ) -> int: ...
+
 
 class SQLAlchemySessionRepository(SessionRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -164,5 +175,27 @@ class SQLAlchemySessionRepository(SessionRepository):
                 Session.client_id == client_id,
                 Session.status.in_(_ACTIVE_SESSION_STATUSES),
             )
+        )
+        return result.scalar_one()
+
+    async def count_in_range(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        exclude_cancelled: bool = False,
+    ) -> int:
+        conditions = [Session.scheduled_start >= start, Session.scheduled_start < end]
+        if trainer_id is not None:
+            conditions.append(Session.trainer_id == trainer_id)
+        if client_id is not None:
+            conditions.append(Session.client_id == client_id)
+        if exclude_cancelled:
+            conditions.append(Session.status != SessionStatus.CANCELLED)
+
+        result = await self._session.execute(
+            select(func.count()).select_from(Session).where(*conditions)
         )
         return result.scalar_one()

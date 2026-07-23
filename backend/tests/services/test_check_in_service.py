@@ -72,6 +72,16 @@ class FakeCheckInRepository(CheckInRepository):
         matched = [c for c in self._check_ins.values() if c.client_id == client_id]
         return sorted(matched, key=lambda c: c.submitted_at, reverse=True)
 
+    async def count_in_range(
+        self, start: datetime, end: datetime, client_ids: list[uuid.UUID] | None = None
+    ) -> int:
+        return sum(
+            1
+            for c in self._check_ins.values()
+            if start <= c.submitted_at < end
+            and (client_ids is None or c.client_id in client_ids)
+        )
+
 
 def _make_check_in(client_id: uuid.UUID, submitted_by: uuid.UUID, **overrides) -> CheckIn:
     now = datetime.now(timezone.utc)

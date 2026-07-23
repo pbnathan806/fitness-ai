@@ -60,6 +60,7 @@ class SubscriptionDetail:
     plan_price: float
     plan_currency: str
     plan_duration_days: int
+    plan_sessions_per_week: int | None
     start_date: date
     end_date: date
     status: SubscriptionStatus
@@ -113,6 +114,7 @@ def _to_detail(subscription: Subscription) -> SubscriptionDetail:
         plan_price=float(subscription.plan_price),
         plan_currency=subscription.plan_currency,
         plan_duration_days=subscription.plan_duration_days,
+        plan_sessions_per_week=subscription.plan_sessions_per_week,
         start_date=subscription.start_date,
         end_date=subscription.end_date,
         status=subscription.status,
@@ -194,6 +196,7 @@ class SubscriptionService:
                 plan_price=plan.price,
                 plan_currency=plan.currency,
                 plan_duration_days=plan.duration_days,
+                plan_sessions_per_week=plan.sessions_per_week,
                 start_date=effective_start_date,
                 end_date=effective_start_date + timedelta(days=plan.duration_days),
                 status=SubscriptionStatus.ACTIVE,

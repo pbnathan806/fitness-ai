@@ -22,6 +22,7 @@ class SubscriptionResponse(BaseModel):
     plan_price: float
     plan_currency: str
     plan_duration_days: int
+    plan_sessions_per_week: int | None
     start_date: date
     end_date: date
     status: SubscriptionStatus

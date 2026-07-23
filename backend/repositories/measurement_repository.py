@@ -1,5 +1,6 @@
 import uuid
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,14 @@ class MeasurementRepository(ABC):
 
     @abstractmethod
     async def list_all_for_client(self, client_id: uuid.UUID) -> list[Measurement]: ...
+
+    @abstractmethod
+    async def count_in_range(self, start: datetime, end: datetime) -> int: ...
+
+    @abstractmethod
+    async def get_latest_recorded_at_for_clients(
+        self, client_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime]: ...
 
 
 class SQLAlchemyMeasurementRepository(MeasurementRepository):
@@ -116,3 +125,35 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
             .order_by(Measurement.recorded_at.desc())
         )
         return list(result.scalars().all())
+
+    async def count_in_range(self, start: datetime, end: datetime) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(Measurement)
+            .where(Measurement.recorded_at >= start, Measurement.recorded_at < end)
+        )
+        return result.scalar_one()
+
+    async def get_latest_recorded_at_for_clients(
+        self, client_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime]:
+        if not client_ids:
+            return {}
+
+        row_number = (
+            func.row_number()
+            .over(
+                partition_by=Measurement.client_id,
+                order_by=Measurement.recorded_at.desc(),
+            )
+            .label("rn")
+        )
+        ranked = (
+            select(Measurement.client_id, Measurement.recorded_at, row_number)
+            .where(Measurement.client_id.in_(client_ids))
+            .subquery()
+        )
+        result = await self._session.execute(
+            select(ranked.c.client_id, ranked.c.recorded_at).where(ranked.c.rn == 1)
+        )
+        return {row.client_id: row.recorded_at for row in result}

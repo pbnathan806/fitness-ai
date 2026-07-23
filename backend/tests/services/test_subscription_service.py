@@ -83,6 +83,21 @@ class FakeSubscriptionRepository(SubscriptionRepository):
         subscription.updated_at = datetime.now(timezone.utc)
         return subscription
 
+    async def get_latest_end_dates_for_clients(
+        self, client_ids: list[uuid.UUID] | None = None
+    ) -> dict[uuid.UUID, date]:
+        by_client: dict[uuid.UUID, list[Subscription]] = {}
+        for subscription in self._subscriptions.values():
+            if client_ids is not None and subscription.client_id not in client_ids:
+                continue
+            by_client.setdefault(subscription.client_id, []).append(subscription)
+
+        latest_end_dates: dict[uuid.UUID, date] = {}
+        for client_id, subscriptions in by_client.items():
+            latest = sorted(subscriptions, key=lambda s: (s.start_date, s.created_at))[-1]
+            latest_end_dates[client_id] = latest.end_date
+        return latest_end_dates
+
 
 def _make_subscription(client_id: uuid.UUID, plan_id: uuid.UUID, **overrides) -> Subscription:
     today = date.today()

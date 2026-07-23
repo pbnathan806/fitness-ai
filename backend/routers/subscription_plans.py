@@ -49,6 +49,7 @@ def _to_response(detail: SubscriptionPlanDetail) -> SubscriptionPlanResponse:
         price=detail.price,
         currency=detail.currency,
         max_sessions_per_month=detail.max_sessions_per_month,
+        sessions_per_week=detail.sessions_per_week,
         is_active=detail.is_active,
         created_at=detail.created_at,
         updated_at=detail.updated_at,
@@ -70,6 +71,7 @@ async def create_subscription_plan(
             price=payload.price,
             currency=payload.currency,
             max_sessions_per_month=payload.max_sessions_per_month,
+            sessions_per_week=payload.sessions_per_week,
         )
     except ForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc

@@ -128,6 +128,9 @@ class FakeClientRepository(ClientRepository):
     ) -> bool:
         return (trainer_id, client_id) in self._assignments
 
+    async def count_all(self) -> int:
+        return len(self._clients)
+
 
 class FakeAssignmentRepository(AssignmentRepository):
     def __init__(self) -> None:

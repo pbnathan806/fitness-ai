@@ -90,6 +90,7 @@ def _to_response(detail: SubscriptionDetail) -> SubscriptionResponse:
         plan_price=detail.plan_price,
         plan_currency=detail.plan_currency,
         plan_duration_days=detail.plan_duration_days,
+        plan_sessions_per_week=detail.plan_sessions_per_week,
         start_date=detail.start_date,
         end_date=detail.end_date,
         status=detail.status,

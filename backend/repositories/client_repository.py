@@ -54,6 +54,9 @@ class ClientRepository(ABC):
         self, trainer_id: uuid.UUID, client_id: uuid.UUID
     ) -> bool: ...
 
+    @abstractmethod
+    async def count_all(self) -> int: ...
+
 
 class SQLAlchemyClientRepository(ClientRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -148,3 +151,7 @@ class SQLAlchemyClientRepository(ClientRepository):
             )
         )
         return result.scalar_one_or_none() is not None
+
+    async def count_all(self) -> int:
+        result = await self._session.execute(select(func.count()).select_from(Client))
+        return result.scalar_one()

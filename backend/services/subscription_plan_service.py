@@ -35,6 +35,7 @@ class SubscriptionPlanDetail:
     price: float
     currency: str
     max_sessions_per_month: int | None
+    sessions_per_week: int | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -49,6 +50,7 @@ def _to_detail(plan: SubscriptionPlan) -> SubscriptionPlanDetail:
         price=float(plan.price),
         currency=plan.currency,
         max_sessions_per_month=plan.max_sessions_per_month,
+        sessions_per_week=plan.sessions_per_week,
         is_active=plan.is_active,
         created_at=plan.created_at,
         updated_at=plan.updated_at,
@@ -75,6 +77,7 @@ class SubscriptionPlanService:
         price: float,
         currency: str,
         max_sessions_per_month: int | None,
+        sessions_per_week: int | None = None,
     ) -> SubscriptionPlanDetail:
         if actor_role != RoleName.SUPER_ADMIN:
             raise ForbiddenError("Only Super Admins may create subscription plans.")
@@ -90,6 +93,7 @@ class SubscriptionPlanService:
                 price=price,
                 currency=currency,
                 max_sessions_per_month=max_sessions_per_month,
+                sessions_per_week=sessions_per_week,
             )
         )
         return _to_detail(plan)

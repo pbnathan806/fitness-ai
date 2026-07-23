@@ -111,6 +111,24 @@ class FakeSessionRepository(SessionRepository):
             in (SessionStatus.SCHEDULED, SessionStatus.COMPLETED, SessionStatus.RESCHEDULED)
         )
 
+    async def count_in_range(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        exclude_cancelled: bool = False,
+    ) -> int:
+        return sum(
+            1
+            for s in self._sessions.values()
+            if start <= s.scheduled_start < end
+            and (trainer_id is None or s.trainer_id == trainer_id)
+            and (client_id is None or s.client_id == client_id)
+            and (not exclude_cancelled or s.status != SessionStatus.CANCELLED)
+        )
+
 
 def _make_session(client_id: uuid.UUID, trainer_id: uuid.UUID, **overrides) -> Session:
     now = datetime.now(timezone.utc)

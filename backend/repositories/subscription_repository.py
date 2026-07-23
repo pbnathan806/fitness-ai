@@ -1,5 +1,6 @@
 import uuid
 from abc import ABC, abstractmethod
+from datetime import date
 
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,11 @@ class SubscriptionRepository(ABC):
 
     @abstractmethod
     async def update(self, subscription_id: uuid.UUID, values: dict) -> Subscription | None: ...
+
+    @abstractmethod
+    async def get_latest_end_dates_for_clients(
+        self, client_ids: list[uuid.UUID] | None = None
+    ) -> dict[uuid.UUID, date]: ...
 
 
 class SQLAlchemySubscriptionRepository(SubscriptionRepository):
@@ -100,3 +106,27 @@ class SQLAlchemySubscriptionRepository(SubscriptionRepository):
             )
             await self._session.commit()
         return await self.get_by_id(subscription_id)
+
+    async def get_latest_end_dates_for_clients(
+        self, client_ids: list[uuid.UUID] | None = None
+    ) -> dict[uuid.UUID, date]:
+        if client_ids is not None and not client_ids:
+            return {}
+
+        row_number = (
+            func.row_number()
+            .over(
+                partition_by=Subscription.client_id,
+                order_by=(Subscription.start_date.desc(), Subscription.created_at.desc()),
+            )
+            .label("rn")
+        )
+        query = select(Subscription.client_id, Subscription.end_date, row_number)
+        if client_ids is not None:
+            query = query.where(Subscription.client_id.in_(client_ids))
+        ranked = query.subquery()
+
+        result = await self._session.execute(
+            select(ranked.c.client_id, ranked.c.end_date).where(ranked.c.rn == 1)
+        )
+        return {row.client_id: row.end_date for row in result}

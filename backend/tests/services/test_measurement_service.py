@@ -63,6 +63,20 @@ class FakeMeasurementRepository(MeasurementRepository):
         matched = [m for m in self._measurements.values() if m.client_id == client_id]
         return sorted(matched, key=lambda m: m.recorded_at, reverse=True)
 
+    async def count_in_range(self, start: datetime, end: datetime) -> int:
+        return sum(1 for m in self._measurements.values() if start <= m.recorded_at < end)
+
+    async def get_latest_recorded_at_for_clients(
+        self, client_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime]:
+        latest: dict[uuid.UUID, datetime] = {}
+        for m in self._measurements.values():
+            if m.client_id not in client_ids:
+                continue
+            if m.client_id not in latest or m.recorded_at > latest[m.client_id]:
+                latest[m.client_id] = m.recorded_at
+        return latest
+
 
 def _make_measurement(client_id: uuid.UUID, recorded_by: uuid.UUID, **overrides) -> Measurement:
     now = datetime.now(timezone.utc)

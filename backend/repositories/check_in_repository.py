@@ -43,6 +43,11 @@ class CheckInRepository(ABC):
     @abstractmethod
     async def list_all_for_client(self, client_id: uuid.UUID) -> list[CheckIn]: ...
 
+    @abstractmethod
+    async def count_in_range(
+        self, start: datetime, end: datetime, client_ids: list[uuid.UUID] | None = None
+    ) -> int: ...
+
 
 class SQLAlchemyCheckInRepository(CheckInRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -132,3 +137,17 @@ class SQLAlchemyCheckInRepository(CheckInRepository):
             .order_by(CheckIn.submitted_at.desc())
         )
         return list(result.scalars().all())
+
+    async def count_in_range(
+        self, start: datetime, end: datetime, client_ids: list[uuid.UUID] | None = None
+    ) -> int:
+        conditions = [CheckIn.submitted_at >= start, CheckIn.submitted_at < end]
+        if client_ids is not None:
+            if not client_ids:
+                return 0
+            conditions.append(CheckIn.client_id.in_(client_ids))
+
+        result = await self._session.execute(
+            select(func.count()).select_from(CheckIn).where(*conditions)
+        )
+        return result.scalar_one()
