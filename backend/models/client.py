@@ -60,6 +60,9 @@ class Client(Base):
     subscriptions: Mapped[list["Subscription"]] = relationship(  # noqa: F821
         "Subscription", foreign_keys="Subscription.client_id", back_populates="client"
     )
+    sessions: Mapped[list["Session"]] = relationship(  # noqa: F821
+        "Session", foreign_keys="Session.client_id", back_populates="client"
+    )
 
     def __repr__(self) -> str:
         return f"Client(id={self.id!r}, user_id={self.user_id!r})"
