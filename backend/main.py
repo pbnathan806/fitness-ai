@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
+from core.config import settings
 from database.session import check_database_connection, dispose_engine
 from routers.application_settings import router as application_settings_router
 from routers.assignments import router as assignments_router
@@ -32,6 +34,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Fitness AI Platform", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(auth_router)
 app.include_router(application_settings_router)
 app.include_router(clients_router)
