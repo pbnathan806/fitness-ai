@@ -3,6 +3,7 @@ import {
   Users,
   UserCog,
   CreditCard,
+  Package,
   CalendarDays,
   CalendarClock,
   ClipboardList,
@@ -11,6 +12,7 @@ import {
   Bell,
   UserCircle,
   TrendingUp,
+  Settings,
   type LucideIcon,
 } from "lucide-react"
 import { Role, type RoleName } from "@/lib/constants"
@@ -28,10 +30,12 @@ export const NAV_ITEMS: Record<RoleName, NavItem[]> = {
     { label: "Dashboard", path: "/super-admin/dashboard", icon: LayoutDashboard },
     { label: "Clients", path: "/super-admin/clients", icon: Users },
     { label: "Trainers", path: "/super-admin/trainers", icon: UserCog },
+    { label: "Subscription Plans", path: "/super-admin/subscription-plans", icon: Package },
     { label: "Subscriptions", path: "/super-admin/subscriptions", icon: CreditCard },
     { label: "Sessions", path: "/super-admin/sessions", icon: CalendarDays },
     { label: "Reports", path: "/super-admin/reports", icon: BarChart3 },
     { label: "Notifications", path: "/super-admin/notifications", icon: Bell },
+    { label: "Settings", path: "/super-admin/settings", icon: Settings },
   ],
   [Role.TRAINER]: [
     { label: "Dashboard", path: "/trainer/dashboard", icon: LayoutDashboard },
@@ -46,6 +50,7 @@ export const NAV_ITEMS: Record<RoleName, NavItem[]> = {
   [Role.CLIENT]: [
     { label: "Dashboard", path: "/client/dashboard", icon: LayoutDashboard },
     { label: "Profile", path: "/client/profile", icon: UserCircle },
+    { label: "Subscriptions", path: "/client/subscriptions", icon: CreditCard },
     { label: "Progress", path: "/client/progress", icon: TrendingUp },
     { label: "Check-ins", path: "/client/check-ins", icon: ClipboardCheck },
     { label: "Reports", path: "/client/reports", icon: BarChart3 },

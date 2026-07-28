@@ -20,6 +20,14 @@ import { TrainerEditPage } from "@/app/pages/trainers/TrainerEditPage"
 import { TrainerDetailsPage } from "@/app/pages/trainers/TrainerDetailsPage"
 import { TrainerProfilePage } from "@/app/pages/trainer/TrainerProfilePage"
 import { TrainerAvailabilityPage } from "@/app/pages/trainer/TrainerAvailabilityPage"
+import { SubscriptionPlansListPage } from "@/app/pages/subscriptionPlans/SubscriptionPlansListPage"
+import { SubscriptionPlanCreatePage } from "@/app/pages/subscriptionPlans/SubscriptionPlanCreatePage"
+import { SubscriptionPlanEditPage } from "@/app/pages/subscriptionPlans/SubscriptionPlanEditPage"
+import { SubscriptionsListPage } from "@/app/pages/subscriptions/SubscriptionsListPage"
+import { SubscriptionCreatePage } from "@/app/pages/subscriptions/SubscriptionCreatePage"
+import { SubscriptionDetailsPage } from "@/app/pages/subscriptions/SubscriptionDetailsPage"
+import { ClientSubscriptionsPage } from "@/app/pages/client/ClientSubscriptionsPage"
+import { ApplicationSettingsPage } from "@/app/pages/applicationSettings/ApplicationSettingsPage"
 import { Role, type RoleName } from "@/lib/constants"
 import { NAV_ITEMS } from "@/lib/navigation"
 import type { ReactNode } from "react"
@@ -54,6 +62,23 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { path: ":id/edit", element: <TrainerEditPage /> },
       ],
     },
+    "Subscription Plans": {
+      children: [
+        { index: true, element: <SubscriptionPlansListPage /> },
+        { path: "new", element: <SubscriptionPlanCreatePage /> },
+        { path: ":id/edit", element: <SubscriptionPlanEditPage /> },
+      ],
+    },
+    Subscriptions: {
+      children: [
+        { index: true, element: <SubscriptionsListPage /> },
+        { path: "new", element: <SubscriptionCreatePage /> },
+        { path: ":id", element: <SubscriptionDetailsPage /> },
+      ],
+    },
+    Settings: {
+      children: [{ index: true, element: <ApplicationSettingsPage /> }],
+    },
   },
   [Role.TRAINER]: {
     Profile: {
@@ -61,6 +86,11 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
     },
     Availability: {
       children: [{ index: true, element: <TrainerAvailabilityPage /> }],
+    },
+  },
+  [Role.CLIENT]: {
+    Subscriptions: {
+      children: [{ index: true, element: <ClientSubscriptionsPage /> }],
     },
   },
 }

@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import { LoadingSpinner } from "@/components/common/LoadingSpinner"
 import { ClientDetailsCard } from "@/app/pages/clients/components/ClientDetailsCard"
 import { TrainerAssignmentCard } from "@/app/pages/clients/components/TrainerAssignmentCard"
+import { SubscriptionEligibilityBadge } from "@/components/common/SubscriptionEligibilityBadge"
 import { clientService } from "@/services/clientService"
 import { assignmentService } from "@/services/assignmentService"
 import { subscriptionService } from "@/services/subscriptionService"
@@ -142,7 +143,12 @@ export function ClientDetailsPage() {
               Subscription Summary
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Eligibility</p>
+              <div className="mt-1">{id && <SubscriptionEligibilityBadge clientId={id} />}</div>
+            </div>
+
             {subscriptionsQuery.isLoading && <Skeleton className="h-16 w-full" />}
             {!subscriptionsQuery.isLoading && subscriptionsQuery.isError && (
               <ErrorState message="Unable to load subscriptions." onRetry={() => subscriptionsQuery.refetch()} />
