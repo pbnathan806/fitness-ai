@@ -64,6 +64,14 @@ export const trainerService = {
     return data
   },
 
+  /** Availability for an arbitrary trainer (SUPER_ADMIN any, TRAINER self-only) -
+   * used as context on the Assign Trainer flow so an admin can see whether a
+   * candidate trainer looks free before assigning them to a client. */
+  async getAvailability(trainerId: string): Promise<TrainerAvailability[]> {
+    const { data } = await apiClient.get<TrainerAvailability[]>(`/trainers/${trainerId}/availability`)
+    return data
+  },
+
   async createAvailability(payload: TrainerAvailabilityInput): Promise<TrainerAvailability> {
     const { data } = await apiClient.post<TrainerAvailability>("/trainers/me/availability", payload)
     return data

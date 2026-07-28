@@ -60,6 +60,7 @@ export function ClientTrainersPage() {
       </div>
 
       <TrainerAssignmentCard
+        clientId={id}
         assignments={clientAssignments}
         isLoading={assignmentsQuery.isLoading}
         isError={assignmentsQuery.isError}

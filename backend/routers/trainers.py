@@ -377,6 +377,30 @@ async def get_trainer(
     return _to_response(detail)
 
 
+@router.get(
+    "/{trainer_id}/availability",
+    response_model=list[TrainerAvailabilityResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_trainer_availability(
+    trainer_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    trainer_service: TrainerService = Depends(get_trainer_service),
+) -> list[TrainerAvailabilityResponse]:
+    try:
+        slots = await trainer_service.get_availability(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            trainer_id=trainer_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except TrainerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return [_to_availability_response(slot) for slot in slots]
+
+
 @router.put("/{trainer_id}", response_model=TrainerResponse, status_code=status.HTTP_200_OK)
 async def update_trainer(
     trainer_id: uuid.UUID,

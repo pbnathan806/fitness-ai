@@ -7,3 +7,9 @@ export interface Assignment {
   created_at: string
   updated_at: string
 }
+
+export interface AssignmentCreateInput {
+  client_id: string
+  trainer_id: string
+  is_primary?: boolean
+}

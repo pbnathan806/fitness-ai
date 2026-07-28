@@ -1,6 +1,6 @@
 import { apiClient } from "@/services/apiClient"
 import type { PaginatedResponse } from "@/types/dashboard"
-import type { Assignment } from "@/types/assignment"
+import type { Assignment, AssignmentCreateInput } from "@/types/assignment"
 
 // There is no "assignments for client X" endpoint for SUPER_ADMIN and no
 // trainer-directory endpoint at all (Task 22.3 scope). Same convention as
@@ -14,5 +14,14 @@ export const assignmentService = {
       params: { page: 1, page_size: LOOKUP_PAGE_SIZE },
     })
     return data.items
+  },
+
+  async createAssignment(payload: AssignmentCreateInput): Promise<Assignment> {
+    const { data } = await apiClient.post<Assignment>("/assignments", payload)
+    return data
+  },
+
+  async deleteAssignment(assignmentId: string): Promise<void> {
+    await apiClient.delete(`/assignments/${assignmentId}`)
   },
 }

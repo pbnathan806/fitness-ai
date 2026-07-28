@@ -358,6 +358,90 @@ def test_get_trainer_raises_not_found():
         )
 
 
+def test_get_availability_succeeds_for_super_admin():
+    (
+        service,
+        trainer_repository,
+        *_,
+        trainer_availability_repository,
+    ) = _make_service()
+    trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer_repository.seed(trainer)
+    asyncio.run(
+        trainer_availability_repository.create(
+            TrainerAvailability(
+                trainer_id=trainer.id,
+                weekday=0,
+                start_time=time(9, 0),
+                end_time=time(10, 0),
+                is_available=True,
+            )
+        )
+    )
+
+    slots = asyncio.run(
+        service.get_availability(
+            actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), trainer_id=trainer.id
+        )
+    )
+
+    assert len(slots) == 1
+    assert slots[0].trainer_id == trainer.id
+
+
+def test_get_availability_allows_self_only_for_trainer():
+    (
+        service,
+        trainer_repository,
+        *_,
+    ) = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    other_trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer_repository.seed(trainer)
+    trainer_repository.seed(other_trainer)
+
+    slots = asyncio.run(
+        service.get_availability(
+            actor_role=RoleName.TRAINER, actor_id=trainer_user_id, trainer_id=trainer.id
+        )
+    )
+    assert slots == []
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.get_availability(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                trainer_id=other_trainer.id,
+            )
+        )
+
+
+def test_get_availability_rejects_client():
+    service, trainer_repository, *_ = _make_service()
+    trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer_repository.seed(trainer)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.get_availability(
+                actor_role=RoleName.CLIENT, actor_id=uuid.uuid4(), trainer_id=trainer.id
+            )
+        )
+
+
+def test_get_availability_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(TrainerNotFoundError):
+        asyncio.run(
+            service.get_availability(
+                actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), trainer_id=uuid.uuid4()
+            )
+        )
+
+
 def test_list_trainers_rejects_non_super_admin():
     service, *_ = _make_service()
 

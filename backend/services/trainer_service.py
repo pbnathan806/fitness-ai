@@ -492,6 +492,30 @@ class TrainerService:
         slots = await self._trainer_availability_repository.list_for_trainer(trainer_id)
         return [_to_availability_detail(slot) for slot in slots]
 
+    async def get_availability(
+        self, actor_role: str | None, actor_id: uuid.UUID, trainer_id: uuid.UUID
+    ) -> list[TrainerAvailabilityDetail]:
+        """Availability for an arbitrary trainer, e.g. so a SUPER_ADMIN can see a
+        candidate trainer's weekly slots as context when assigning them to a
+        client. Same RBAC shape as get_trainer: SUPER_ADMIN may view any
+        trainer, a TRAINER may only view their own.
+        """
+        record = await self._trainer_repository.get_by_id(trainer_id)
+
+        if actor_role == RoleName.SUPER_ADMIN:
+            pass
+        elif actor_role == RoleName.TRAINER:
+            if record is None or record.trainer.user_id != actor_id:
+                raise ForbiddenError("Trainers may only view their own availability.")
+        else:
+            raise ForbiddenError("You do not have permission to view this trainer's availability.")
+
+        if record is None:
+            raise TrainerNotFoundError(f"Trainer '{trainer_id}' was not found.")
+
+        slots = await self._trainer_availability_repository.list_for_trainer(trainer_id)
+        return [_to_availability_detail(slot) for slot in slots]
+
     async def create_availability(
         self,
         actor_role: str | None,

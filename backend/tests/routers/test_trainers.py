@@ -1,11 +1,13 @@
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 from fastapi.testclient import TestClient
 
 from core.constants import RoleName
 from core.deps import CurrentUser, get_current_user
 from main import app
+from models.trainer_availability import TrainerAvailability
 from routers.trainers import (
     get_application_setting_service,
     get_assignment_repository,
@@ -247,6 +249,79 @@ def test_get_trainer_by_id_returns_404_when_missing():
     test_client = TestClient(app)
 
     response = test_client.get(f"/api/v1/trainers/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+
+
+def test_get_trainer_availability_succeeds_for_super_admin():
+    trainer_repository = FakeTrainerRepository()
+    trainer = _make_seeded_trainer(user_id=uuid.uuid4())
+    trainer_repository.seed(trainer)
+    trainer_availability_repository = FakeTrainerAvailabilityRepository()
+    asyncio.run(
+        trainer_availability_repository.create(
+            TrainerAvailability(
+                trainer_id=trainer.id,
+                weekday=1,
+                start_time=time(9, 0),
+                end_time=time(10, 0),
+                is_available=True,
+            )
+        )
+    )
+    _override_dependencies(
+        trainer_repository=trainer_repository,
+        trainer_availability_repository=trainer_availability_repository,
+        user_id=uuid.uuid4(),
+        active_role=RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/trainers/{trainer.id}/availability")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["weekday"] == 1
+
+
+def test_get_trainer_availability_rejects_other_trainer():
+    trainer_repository = FakeTrainerRepository()
+    trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer_repository.seed(trainer)
+    _override_dependencies(
+        trainer_repository=trainer_repository,
+        user_id=uuid.uuid4(),
+        active_role=RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/trainers/{trainer.id}/availability")
+
+    assert response.status_code == 403
+
+
+def test_get_trainer_availability_rejects_client():
+    trainer_repository = FakeTrainerRepository()
+    trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer_repository.seed(trainer)
+    _override_dependencies(
+        trainer_repository=trainer_repository,
+        user_id=uuid.uuid4(),
+        active_role=RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/trainers/{trainer.id}/availability")
+
+    assert response.status_code == 403
+
+
+def test_get_trainer_availability_returns_404_when_missing():
+    _override_dependencies(user_id=uuid.uuid4(), active_role=RoleName.SUPER_ADMIN)
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/trainers/{uuid.uuid4()}/availability")
 
     assert response.status_code == 404
 
