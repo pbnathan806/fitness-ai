@@ -20,7 +20,16 @@ class Settings(BaseSettings):
     postgres_ssl_mode: str = "disable"
     cors_allowed_origins: str = "http://localhost:5173"
 
+    # "production" disables the public /docs, /redoc, and /openapi.json
+    # routes (see main.py) so the API schema isn't handed out to anyone who
+    # asks; every other environment keeps them on for local/manual testing.
+    environment: str = "development"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
 
     @property
     def database_dsn(self) -> str:

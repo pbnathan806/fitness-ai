@@ -34,7 +34,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await dispose_engine()
 
 
-app = FastAPI(title="Fitness AI Platform", lifespan=lifespan)
+app = FastAPI(
+    title="Fitness AI Platform",
+    lifespan=lifespan,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
