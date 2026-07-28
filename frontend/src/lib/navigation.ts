@@ -51,6 +51,7 @@ export const NAV_ITEMS: Record<RoleName, NavItem[]> = {
     { label: "Dashboard", path: "/client/dashboard", icon: LayoutDashboard },
     { label: "Profile", path: "/client/profile", icon: UserCircle },
     { label: "Subscriptions", path: "/client/subscriptions", icon: CreditCard },
+    { label: "My Sessions", path: "/client/my-sessions", icon: CalendarDays },
     { label: "Progress", path: "/client/progress", icon: TrendingUp },
     { label: "Check-ins", path: "/client/check-ins", icon: ClipboardCheck },
     { label: "Reports", path: "/client/reports", icon: BarChart3 },

@@ -27,6 +27,15 @@ import { SubscriptionsListPage } from "@/app/pages/subscriptions/SubscriptionsLi
 import { SubscriptionCreatePage } from "@/app/pages/subscriptions/SubscriptionCreatePage"
 import { SubscriptionDetailsPage } from "@/app/pages/subscriptions/SubscriptionDetailsPage"
 import { ClientSubscriptionsPage } from "@/app/pages/client/ClientSubscriptionsPage"
+import { SessionsListPage } from "@/app/pages/sessions/SessionsListPage"
+import { SessionCreatePage } from "@/app/pages/sessions/SessionCreatePage"
+import { SessionBulkCreatePage } from "@/app/pages/sessions/SessionBulkCreatePage"
+import { SessionDetailsPage } from "@/app/pages/sessions/SessionDetailsPage"
+import { SessionEditPage } from "@/app/pages/sessions/SessionEditPage"
+import { TrainerSessionsListPage } from "@/app/pages/trainer/TrainerSessionsListPage"
+import { TrainerSessionDetailsPage } from "@/app/pages/trainer/TrainerSessionDetailsPage"
+import { ClientMySessionsListPage } from "@/app/pages/client/ClientMySessionsListPage"
+import { ClientMySessionDetailsPage } from "@/app/pages/client/ClientMySessionDetailsPage"
 import { ApplicationSettingsPage } from "@/app/pages/applicationSettings/ApplicationSettingsPage"
 import { Role, type RoleName } from "@/lib/constants"
 import { NAV_ITEMS } from "@/lib/navigation"
@@ -76,11 +85,26 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { path: ":id", element: <SubscriptionDetailsPage /> },
       ],
     },
+    Sessions: {
+      children: [
+        { index: true, element: <SessionsListPage /> },
+        { path: "new", element: <SessionCreatePage /> },
+        { path: "bulk", element: <SessionBulkCreatePage /> },
+        { path: ":id", element: <SessionDetailsPage /> },
+        { path: ":id/edit", element: <SessionEditPage /> },
+      ],
+    },
     Settings: {
       children: [{ index: true, element: <ApplicationSettingsPage /> }],
     },
   },
   [Role.TRAINER]: {
+    Sessions: {
+      children: [
+        { index: true, element: <TrainerSessionsListPage /> },
+        { path: ":id", element: <TrainerSessionDetailsPage /> },
+      ],
+    },
     Profile: {
       children: [{ index: true, element: <TrainerProfilePage /> }],
     },
@@ -91,6 +115,12 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
   [Role.CLIENT]: {
     Subscriptions: {
       children: [{ index: true, element: <ClientSubscriptionsPage /> }],
+    },
+    "My Sessions": {
+      children: [
+        { index: true, element: <ClientMySessionsListPage /> },
+        { path: ":id", element: <ClientMySessionDetailsPage /> },
+      ],
     },
   },
 }
