@@ -102,11 +102,11 @@ class FakeSessionRepository(SessionRepository):
             for s in self._sessions.values()
         )
 
-    async def count_active_for_client(self, client_id: uuid.UUID) -> int:
+    async def count_active_for_subscription(self, subscription_id: uuid.UUID) -> int:
         return sum(
             1
             for s in self._sessions.values()
-            if s.client_id == client_id
+            if s.subscription_id == subscription_id
             and s.status
             in (SessionStatus.SCHEDULED, SessionStatus.COMPLETED, SessionStatus.RESCHEDULED)
         )
@@ -168,6 +168,7 @@ def _make_session(client_id: uuid.UUID, trainer_id: uuid.UUID, **overrides) -> S
         id=uuid.uuid4(),
         client_id=client_id,
         trainer_id=trainer_id,
+        subscription_id=None,
         scheduled_start=start,
         scheduled_end=start + timedelta(minutes=60),
         duration_minutes=60,
@@ -278,6 +279,33 @@ def test_create_session_succeeds_for_super_admin():
     assert detail.client_id == client.id
     assert detail.trainer_id == trainer.id
     assert detail.status == SessionStatus.SCHEDULED
+
+
+def test_create_session_stamps_active_subscription_id():
+    service, session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_service()
+    )
+    client, trainer, _ = _setup_eligible_pair(
+        client_repository, assignment_repository, subscription_repository, plan_repository
+    )
+    active_subscription = asyncio.run(subscription_repository.get_active_for_client(client.id))
+
+    detail = asyncio.run(
+        service.create_session(
+            actor_role=RoleName.SUPER_ADMIN,
+            actor_id=uuid.uuid4(),
+            client_id=client.id,
+            trainer_id=trainer.id,
+            scheduled_start=_future_start(),
+            duration_minutes=60,
+            meeting_type=SessionMeetingType.GOOGLE_MEET,
+            meeting_link=None,
+            trainer_notes=None,
+        )
+    )
+
+    stored = asyncio.run(session_repository.get_by_id(detail.id))
+    assert stored.subscription_id == active_subscription.id
 
 
 def test_create_session_succeeds_for_assigned_trainer_without_trainer_id():
@@ -671,10 +699,13 @@ def test_remaining_sessions_accounts_for_existing_active_sessions():
         plan_repository,
         max_sessions_per_month=12,
     )
+    subscription = asyncio.run(subscription_repository.get_active_for_client(client.id))
     for status in (SessionStatus.COMPLETED,) * 8 + (SessionStatus.SCHEDULED,) * 2:
-        session_repository.seed(_make_session(client.id, trainer.id, status=status))
+        session_repository.seed(
+            _make_session(client.id, trainer.id, subscription_id=subscription.id, status=status)
+        )
     session_repository.seed(
-        _make_session(client.id, trainer.id, status=SessionStatus.CANCELLED)
+        _make_session(client.id, trainer.id, subscription_id=subscription.id, status=SessionStatus.CANCELLED)
     )
 
     remaining = asyncio.run(service.remaining_sessions(client.id))
@@ -682,11 +713,12 @@ def test_remaining_sessions_accounts_for_existing_active_sessions():
     assert remaining == 2
 
 
-# --- bulk_create_sessions ----------------------------------------------------
-
-
-def test_bulk_create_sessions_creates_and_skips_at_limit():
-    service, _, client_repository, assignment_repository, subscription_repository, plan_repository = (
+def test_remaining_sessions_ignores_sessions_from_a_prior_subscription():
+    """Regression test: renewing a client's subscription must not inherit
+    usage from the subscription it replaces. Sessions are only ever attached
+    to the subscription that was active when they were booked, so a client's
+    remaining count resets in full once a new subscription becomes ACTIVE."""
+    service, session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
         _make_service()
     )
     client, trainer, _ = _setup_eligible_pair(
@@ -696,6 +728,51 @@ def test_bulk_create_sessions_creates_and_skips_at_limit():
         plan_repository,
         max_sessions_per_month=12,
     )
+    old_subscription = asyncio.run(subscription_repository.get_active_for_client(client.id))
+
+    # Fully use up January's subscription.
+    for _ in range(12):
+        session_repository.seed(
+            _make_session(
+                client.id, trainer.id, subscription_id=old_subscription.id, status=SessionStatus.COMPLETED
+            )
+        )
+    assert asyncio.run(service.remaining_sessions(client.id)) == 0
+
+    # January's subscription expires; a new one (February) becomes ACTIVE.
+    old_subscription.status = SubscriptionStatus.EXPIRED
+    new_plan = _make_plan(max_sessions_per_month=12)
+    plan_repository.seed(new_plan)
+    subscription_repository.seed(
+        _make_subscription(
+            client.id,
+            new_plan.id,
+            status=SubscriptionStatus.ACTIVE,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=30),
+        )
+    )
+
+    remaining = asyncio.run(service.remaining_sessions(client.id))
+
+    assert remaining == 12
+
+
+# --- bulk_create_sessions ----------------------------------------------------
+
+
+def test_bulk_create_sessions_creates_and_skips_at_limit():
+    service, session_repository, client_repository, assignment_repository, subscription_repository, plan_repository = (
+        _make_service()
+    )
+    client, trainer, _ = _setup_eligible_pair(
+        client_repository,
+        assignment_repository,
+        subscription_repository,
+        plan_repository,
+        max_sessions_per_month=12,
+    )
+    active_subscription = asyncio.run(subscription_repository.get_active_for_client(client.id))
 
     result = asyncio.run(
         service.bulk_create_sessions(
@@ -716,6 +793,10 @@ def test_bulk_create_sessions_creates_and_skips_at_limit():
     assert result.sessions_skipped == 1
     assert len(result.skipped_reasons) == 1
     assert "maximum number of sessions" in result.skipped_reasons[0]
+
+    created_sessions = asyncio.run(session_repository.list_all_for_client(client.id))
+    assert len(created_sessions) == 12
+    assert all(s.subscription_id == active_subscription.id for s in created_sessions)
 
 
 def test_bulk_create_sessions_skips_trainer_overlap_and_continues():

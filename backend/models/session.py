@@ -65,6 +65,15 @@ class Session(Base):
     trainer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trainer_profiles.id"), nullable=False
     )
+    # Which subscription was active when this session was booked - stamped at
+    # creation time and used only to scope SessionService.remaining_sessions
+    # to the correct entitlement, so a renewed/replacement subscription starts
+    # with a fresh count instead of inheriting a prior subscription's usage.
+    # Nullable since it's bookkeeping, not a required attribute of a session;
+    # never exposed via the API.
+    subscription_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subscriptions.id"), nullable=True
+    )
 
     scheduled_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

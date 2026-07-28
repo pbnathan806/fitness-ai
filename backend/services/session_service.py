@@ -157,6 +157,10 @@ class SessionService:
         """Sessions still available on the client's active subscription plan.
 
         Returns None when the plan has no configured limit (unlimited sessions).
+        Scoped to the client's *current* subscription (via subscription_id on
+        each Session, stamped at creation) rather than to the client overall,
+        so a renewed or replacement subscription starts with a fresh count
+        instead of inheriting usage from a prior, now-inactive subscription.
         """
         subscription = await self._subscription_repository.get_active_for_client(client_id)
         if subscription is None:
@@ -168,15 +172,18 @@ class SessionService:
         if plan is None or plan.max_sessions_per_month is None:
             return None
 
-        used = await self._session_repository.count_active_for_client(client_id)
+        used = await self._session_repository.count_active_for_subscription(subscription.id)
         return max(plan.max_sessions_per_month - used, 0)
 
-    async def _ensure_client_eligible(self, client_id: uuid.UUID) -> None:
+    async def _ensure_client_eligible(self, client_id: uuid.UUID) -> uuid.UUID:
+        """Returns the id of the client's eligible active subscription, so
+        callers can stamp it onto the Session(s) they go on to create."""
         subscription = await self._subscription_repository.get_active_for_client(client_id)
         if subscription is None or not can_schedule_sessions(subscription):
             raise SubscriptionNotEligibleError(
                 f"Client '{client_id}' does not have a subscription eligible for scheduling."
             )
+        return subscription.id
 
     async def _can_schedule_session(
         self,
@@ -214,7 +221,8 @@ class SessionService:
         actor_id: uuid.UUID,
         client_id: uuid.UUID,
         trainer_id: uuid.UUID | None,
-    ) -> uuid.UUID:
+    ) -> tuple[uuid.UUID, uuid.UUID]:
+        """Returns (effective_trainer_id, subscription_id)."""
         if actor_role not in (RoleName.SUPER_ADMIN, RoleName.TRAINER):
             raise ForbiddenError("Only Trainers and Super Admins may create sessions.")
 
@@ -228,8 +236,8 @@ class SessionService:
         if not await self._assignment_repository.exists_for_pair(client_id, effective_trainer_id):
             raise TrainerNotAssignedError(f"Trainer is not assigned to client '{client_id}'.")
 
-        await self._ensure_client_eligible(client_id)
-        return effective_trainer_id
+        subscription_id = await self._ensure_client_eligible(client_id)
+        return effective_trainer_id, subscription_id
 
     async def create_session(
         self,
@@ -243,7 +251,7 @@ class SessionService:
         meeting_link: str | None,
         trainer_notes: str | None,
     ) -> SessionDetail:
-        effective_trainer_id = await self._validate_session_request(
+        effective_trainer_id, subscription_id = await self._validate_session_request(
             actor_role, actor_id, client_id, trainer_id
         )
 
@@ -256,6 +264,7 @@ class SessionService:
             Session(
                 client_id=client_id,
                 trainer_id=effective_trainer_id,
+                subscription_id=subscription_id,
                 scheduled_start=scheduled_start,
                 scheduled_end=scheduled_end,
                 duration_minutes=duration_minutes,
@@ -280,7 +289,7 @@ class SessionService:
         duration_minutes: int,
         meeting_type: SessionMeetingType,
     ) -> BulkSessionResult:
-        effective_trainer_id = await self._validate_session_request(
+        effective_trainer_id, subscription_id = await self._validate_session_request(
             actor_role, actor_id, client_id, trainer_id
         )
 
@@ -307,6 +316,7 @@ class SessionService:
                 Session(
                     client_id=client_id,
                     trainer_id=effective_trainer_id,
+                    subscription_id=subscription_id,
                     scheduled_start=slot_start,
                     scheduled_end=slot_end,
                     duration_minutes=duration_minutes,

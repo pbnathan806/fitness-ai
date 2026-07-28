@@ -54,7 +54,7 @@ class SessionRepository(ABC):
     ) -> bool: ...
 
     @abstractmethod
-    async def count_active_for_client(self, client_id: uuid.UUID) -> int: ...
+    async def count_active_for_subscription(self, subscription_id: uuid.UUID) -> int: ...
 
     @abstractmethod
     async def count_in_range(
@@ -185,12 +185,12 @@ class SQLAlchemySessionRepository(SessionRepository):
         )
         return result.first() is not None
 
-    async def count_active_for_client(self, client_id: uuid.UUID) -> int:
+    async def count_active_for_subscription(self, subscription_id: uuid.UUID) -> int:
         result = await self._session.execute(
             select(func.count())
             .select_from(Session)
             .where(
-                Session.client_id == client_id,
+                Session.subscription_id == subscription_id,
                 Session.status.in_(_ACTIVE_SESSION_STATUSES),
             )
         )

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -228,11 +229,13 @@ def test_create_session_returns_409_for_session_limit_reached():
         plan_repository,
         max_sessions_per_month=1,
     )
+    active_subscription = asyncio.run(subscription_repository.get_active_for_client(client.id))
     existing_start = datetime.now(timezone.utc) + timedelta(days=10)
     session_repository.seed(
         _make_session(
             client.id,
             trainer.id,
+            subscription_id=active_subscription.id,
             status=SessionStatus.COMPLETED,
             scheduled_start=existing_start,
             scheduled_end=existing_start + timedelta(hours=1),
