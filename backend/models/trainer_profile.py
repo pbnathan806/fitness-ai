@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,12 @@ class TrainerProfile(Base):
     # Annotation kept non-Optional (with nullable=True set explicitly) because
     # SQLAlchemy 2.0.36's Mapped[X | None] resolution crashes on Python 3.14;
     # the column is nullable at the DB/ORM level regardless.
+    first_name: Mapped[str] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=True)
+    phone_number: Mapped[str] = mapped_column(String(20), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=True, server_default=text("true")
+    )
     specialization: Mapped[str] = mapped_column(String(255), nullable=True)
     experience_years: Mapped[int] = mapped_column(Integer, nullable=True)
     bio: Mapped[str] = mapped_column(Text, nullable=True)
@@ -54,6 +60,9 @@ class TrainerProfile(Base):
     )
     sessions: Mapped[list["Session"]] = relationship(  # noqa: F821
         "Session", foreign_keys="Session.trainer_id", back_populates="trainer"
+    )
+    availability_slots: Mapped[list["TrainerAvailability"]] = relationship(  # noqa: F821
+        "TrainerAvailability", back_populates="trainer"
     )
 
     def __repr__(self) -> str:

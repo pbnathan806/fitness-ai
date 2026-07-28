@@ -14,6 +14,12 @@ import { ClientCreatePage } from "@/app/pages/clients/ClientCreatePage"
 import { ClientEditPage } from "@/app/pages/clients/ClientEditPage"
 import { ClientDetailsPage } from "@/app/pages/clients/ClientDetailsPage"
 import { ClientTrainersPage } from "@/app/pages/clients/ClientTrainersPage"
+import { TrainersListPage } from "@/app/pages/trainers/TrainersListPage"
+import { TrainerCreatePage } from "@/app/pages/trainers/TrainerCreatePage"
+import { TrainerEditPage } from "@/app/pages/trainers/TrainerEditPage"
+import { TrainerDetailsPage } from "@/app/pages/trainers/TrainerDetailsPage"
+import { TrainerProfilePage } from "@/app/pages/trainer/TrainerProfilePage"
+import { TrainerAvailabilityPage } from "@/app/pages/trainer/TrainerAvailabilityPage"
 import { Role, type RoleName } from "@/lib/constants"
 import { NAV_ITEMS } from "@/lib/navigation"
 import type { ReactNode } from "react"
@@ -26,7 +32,9 @@ const ROLE_SEGMENT: Record<RoleName, string> = {
 
 /** Nested routes for a NAV_ITEMS entry that has grown beyond a single
  * placeholder screen, keyed by nav label. Task 22.3 implements the Clients
- * module for SUPER_ADMIN; other roles/sections stay on PlaceholderPage. */
+ * module and Task 22.4 the Trainers module (SUPER_ADMIN directory plus the
+ * TRAINER self-profile and availability screens); other roles/sections stay
+ * on PlaceholderPage. */
 const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObject, "children">>>> = {
   [Role.SUPER_ADMIN]: {
     Clients: {
@@ -37,6 +45,22 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { path: ":id/edit", element: <ClientEditPage /> },
         { path: ":id/trainers", element: <ClientTrainersPage /> },
       ],
+    },
+    Trainers: {
+      children: [
+        { index: true, element: <TrainersListPage /> },
+        { path: "new", element: <TrainerCreatePage /> },
+        { path: ":id", element: <TrainerDetailsPage /> },
+        { path: ":id/edit", element: <TrainerEditPage /> },
+      ],
+    },
+  },
+  [Role.TRAINER]: {
+    Profile: {
+      children: [{ index: true, element: <TrainerProfilePage /> }],
+    },
+    Availability: {
+      children: [{ index: true, element: <TrainerAvailabilityPage /> }],
     },
   },
 }

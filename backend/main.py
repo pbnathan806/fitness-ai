@@ -18,6 +18,7 @@ from routers.measurements import router as measurements_router
 from routers.sessions import router as sessions_router
 from routers.subscription_plans import router as subscription_plans_router
 from routers.subscriptions import router as subscriptions_router
+from routers.trainers import router as trainers_router
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ app.include_router(sessions_router)
 app.include_router(measurements_router)
 app.include_router(check_ins_router)
 app.include_router(dashboard_router)
+app.include_router(trainers_router)
 
 
 @app.get("/")

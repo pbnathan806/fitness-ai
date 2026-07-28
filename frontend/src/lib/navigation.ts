@@ -4,6 +4,7 @@ import {
   UserCog,
   CreditCard,
   CalendarDays,
+  CalendarClock,
   ClipboardList,
   ClipboardCheck,
   BarChart3,
@@ -38,7 +39,9 @@ export const NAV_ITEMS: Record<RoleName, NavItem[]> = {
     { label: "Sessions", path: "/trainer/sessions", icon: CalendarDays },
     { label: "Session Notes", path: "/trainer/session-notes", icon: ClipboardList },
     { label: "Check-ins", path: "/trainer/check-ins", icon: ClipboardCheck },
+    { label: "Availability", path: "/trainer/availability", icon: CalendarClock },
     { label: "Reports", path: "/trainer/reports", icon: BarChart3 },
+    { label: "Profile", path: "/trainer/profile", icon: UserCircle },
   ],
   [Role.CLIENT]: [
     { label: "Dashboard", path: "/client/dashboard", icon: LayoutDashboard },

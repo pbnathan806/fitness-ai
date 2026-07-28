@@ -144,7 +144,8 @@ export function ClientsListPage() {
                 <option value="">All trainers</option>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Trainer directory API is not yet available. This filter will be enabled in Task 22.4.
+                Trainer directory API is not yet available. This functionality will be enabled when the
+                corresponding backend API becomes available.
               </p>
             </div>
           </div>

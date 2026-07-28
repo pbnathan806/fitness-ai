@@ -67,6 +67,24 @@ class SessionRepository(ABC):
         exclude_cancelled: bool = False,
     ) -> int: ...
 
+    @abstractmethod
+    async def count_completed(
+        self,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> int: ...
+
+    @abstractmethod
+    async def count_total(
+        self,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+    ) -> int: ...
+
 
 class SQLAlchemySessionRepository(SessionRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -194,6 +212,46 @@ class SQLAlchemySessionRepository(SessionRepository):
             conditions.append(Session.client_id == client_id)
         if exclude_cancelled:
             conditions.append(Session.status != SessionStatus.CANCELLED)
+
+        result = await self._session.execute(
+            select(func.count()).select_from(Session).where(*conditions)
+        )
+        return result.scalar_one()
+
+    async def count_completed(
+        self,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> int:
+        conditions = [Session.status == SessionStatus.COMPLETED]
+        if trainer_id is not None:
+            conditions.append(Session.trainer_id == trainer_id)
+        if client_id is not None:
+            conditions.append(Session.client_id == client_id)
+        if start is not None:
+            conditions.append(Session.scheduled_start >= start)
+        if end is not None:
+            conditions.append(Session.scheduled_start < end)
+
+        result = await self._session.execute(
+            select(func.count()).select_from(Session).where(*conditions)
+        )
+        return result.scalar_one()
+
+    async def count_total(
+        self,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+    ) -> int:
+        conditions = []
+        if trainer_id is not None:
+            conditions.append(Session.trainer_id == trainer_id)
+        if client_id is not None:
+            conditions.append(Session.client_id == client_id)
 
         result = await self._session.execute(
             select(func.count()).select_from(Session).where(*conditions)

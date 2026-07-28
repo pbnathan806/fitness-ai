@@ -129,6 +129,37 @@ class FakeSessionRepository(SessionRepository):
             and (not exclude_cancelled or s.status != SessionStatus.CANCELLED)
         )
 
+    async def count_completed(
+        self,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> int:
+        return sum(
+            1
+            for s in self._sessions.values()
+            if s.status == SessionStatus.COMPLETED
+            and (trainer_id is None or s.trainer_id == trainer_id)
+            and (client_id is None or s.client_id == client_id)
+            and (start is None or s.scheduled_start >= start)
+            and (end is None or s.scheduled_start < end)
+        )
+
+    async def count_total(
+        self,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+    ) -> int:
+        return sum(
+            1
+            for s in self._sessions.values()
+            if (trainer_id is None or s.trainer_id == trainer_id)
+            and (client_id is None or s.client_id == client_id)
+        )
+
 
 def _make_session(client_id: uuid.UUID, trainer_id: uuid.UUID, **overrides) -> Session:
     now = datetime.now(timezone.utc)

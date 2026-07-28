@@ -9,6 +9,7 @@ from core.config import settings
 
 _BCRYPT_MAX_BYTES = 72
 _PASSWORD_RESET_TOKEN_BYTES = 32
+_TEMPORARY_PASSWORD_BYTES = 12
 
 
 def hash_password(plain_password: str) -> str:
@@ -78,6 +79,16 @@ def create_access_token(
 def generate_password_reset_token() -> str:
     """Generate a cryptographically secure, high-entropy password reset token."""
     return secrets.token_urlsafe(_PASSWORD_RESET_TOKEN_BYTES)
+
+
+def generate_temporary_password() -> str:
+    """Generate a cryptographically secure temporary password for a newly created account.
+
+    Uses the same `secrets`-based approach as `generate_password_reset_token`,
+    sized well under the bcrypt 72-byte cap while comfortably exceeding typical
+    minimum-length password policies.
+    """
+    return secrets.token_urlsafe(_TEMPORARY_PASSWORD_BYTES)
 
 
 def hash_reset_token(raw_token: str) -> str:

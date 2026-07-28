@@ -9,7 +9,7 @@ import { formatDate } from "@/lib/format"
 import type { Assignment } from "@/types/assignment"
 
 const TRAINER_DIRECTORY_NOTE =
-  "Trainer directory API is not yet available. This functionality will be enabled in Task 22.4."
+  "Trainer directory API is not yet available. This functionality will be enabled when the corresponding backend API becomes available."
 
 interface TrainerAssignmentCardProps {
   assignments: Assignment[] | undefined
@@ -23,8 +23,8 @@ interface TrainerAssignmentCardProps {
 
 /** Displays a client's assigned trainers from the existing `GET /assignments`
  * API (Task 22.3). There is no trainer-directory endpoint, so trainers are
- * shown by id only (no name/email available) and Assign/Remove are disabled
- * pending Task 22.4, per product decision. */
+ * shown by id only (no name/email available) and Assign/Remove stay disabled
+ * until the backend adds one - Task 22.4 confirmed no such endpoint exists. */
 export function TrainerAssignmentCard({
   assignments,
   isLoading,

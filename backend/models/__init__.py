@@ -17,6 +17,7 @@ from models.subscription import (
     SubscriptionStatus,
 )
 from models.subscription_plan import SubscriptionPlan
+from models.trainer_availability import TrainerAvailability
 from models.trainer_profile import TrainerProfile
 from models.user import User
 from models.user_role import UserRole
@@ -37,6 +38,7 @@ __all__ = [
     "SubscriptionPaymentStatus",
     "SubscriptionPlan",
     "SubscriptionStatus",
+    "TrainerAvailability",
     "TrainerProfile",
     "User",
     "UserRole",
