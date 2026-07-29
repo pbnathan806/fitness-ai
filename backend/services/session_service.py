@@ -410,6 +410,8 @@ class SessionService:
             trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
             if trainer_id is None or session.trainer_id != trainer_id:
                 raise ForbiddenError("Trainers may only update their own sessions.")
+            if not await self._assignment_repository.exists_for_pair(session.client_id, trainer_id):
+                raise ForbiddenError("Trainer is no longer assigned to this client.")
 
         if "attendance_status" in values:
             self._ensure_attendance_mutable(session)
@@ -426,12 +428,21 @@ class SessionService:
     async def _authorize_trainer_write(
         self, actor_role: str | None, actor_id: uuid.UUID, session: Session
     ) -> None:
+        """Gates update_session_notes and update_session_attendance. Unlike the
+        read paths (get_session, get_session_summary), which stay keyed only on
+        session.trainer_id so a trainer retains visibility into their own past
+        work, writes also require a *live* assignment - once SUPER_ADMIN
+        removes a trainer from a client, that trainer immediately loses the
+        ability to keep editing that client's session records, past or future.
+        """
         if actor_role not in (RoleName.SUPER_ADMIN, RoleName.TRAINER):
             raise ForbiddenError("Only Trainers and Super Admins may perform this action.")
         if actor_role == RoleName.TRAINER:
             trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
             if trainer_id is None or session.trainer_id != trainer_id:
                 raise ForbiddenError("Trainers may only manage their own assigned sessions.")
+            if not await self._assignment_repository.exists_for_pair(session.client_id, trainer_id):
+                raise ForbiddenError("Trainer is no longer assigned to this client.")
 
     async def update_session_notes(
         self, actor_role: str | None, actor_id: uuid.UUID, session_id: uuid.UUID, values: dict

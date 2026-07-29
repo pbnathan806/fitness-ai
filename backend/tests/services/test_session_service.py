@@ -1055,7 +1055,12 @@ def test_update_session_succeeds_for_owning_trainer():
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
-    session = _make_session(uuid.uuid4(), trainer.id)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    session = _make_session(client.id, trainer.id)
     session_repository.seed(session)
 
     detail = asyncio.run(
@@ -1076,6 +1081,31 @@ def test_update_session_rejects_non_owning_trainer():
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
     session = _make_session(uuid.uuid4(), uuid.uuid4())
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                session_id=session.id,
+                values={"status": SessionStatus.CANCELLED},
+            )
+        )
+
+
+def test_update_session_rejects_trainer_no_longer_assigned_to_client():
+    """Regression test: once SUPER_ADMIN removes the assignment, the trainer
+    must lose write access to the client's sessions immediately - even though
+    session.trainer_id still points at them (Task: close write-access gap)."""
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    # No assignment seeded between client and trainer - simulates removal.
+    session = _make_session(client.id, trainer.id)
     session_repository.seed(session)
 
     with pytest.raises(ForbiddenError):
@@ -1127,7 +1157,12 @@ def test_update_session_notes_succeeds_for_owning_trainer():
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
-    session = _make_session(uuid.uuid4(), trainer.id)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    session = _make_session(client.id, trainer.id)
     session_repository.seed(session)
 
     detail = asyncio.run(
@@ -1148,6 +1183,27 @@ def test_update_session_notes_succeeds_for_owning_trainer():
     assert detail.trainer_feedback == "Consistency improving."
     assert detail.homework == "Walk 10,000 steps daily."
     assert detail.next_session_focus == "Core strengthening."
+
+
+def test_update_session_notes_rejects_trainer_no_longer_assigned_to_client():
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    session = _make_session(client.id, trainer.id)
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session_notes(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                session_id=session.id,
+                values={"trainer_notes": "Should not be allowed."},
+            )
+        )
 
 
 def test_update_session_notes_succeeds_for_super_admin():
@@ -1224,7 +1280,12 @@ def test_update_session_attendance_succeeds_for_owning_trainer():
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
-    session = _make_session(uuid.uuid4(), trainer.id)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    session = _make_session(client.id, trainer.id)
     session_repository.seed(session)
 
     detail = asyncio.run(
@@ -1237,6 +1298,27 @@ def test_update_session_attendance_succeeds_for_owning_trainer():
     )
 
     assert detail.attendance_status == SessionAttendanceStatus.BOTH_PRESENT
+
+
+def test_update_session_attendance_rejects_trainer_no_longer_assigned_to_client():
+    service, session_repository, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    session = _make_session(client.id, trainer.id)
+    session_repository.seed(session)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_session_attendance(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                session_id=session.id,
+                attendance_status=SessionAttendanceStatus.BOTH_PRESENT,
+            )
+        )
 
 
 def test_update_session_attendance_succeeds_for_super_admin():

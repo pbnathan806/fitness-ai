@@ -597,7 +597,12 @@ def test_update_session_notes_succeeds_for_assigned_trainer():
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
-    session = _make_session(uuid.uuid4(), trainer.id)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    session = _make_session(client.id, trainer.id)
     session_repository.seed(session)
     _override_dependencies(
         session_repository,
@@ -717,7 +722,12 @@ def test_update_session_attendance_succeeds_for_assigned_trainer():
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
-    session = _make_session(uuid.uuid4(), trainer.id)
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client)
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    session = _make_session(client.id, trainer.id)
     session_repository.seed(session)
     _override_dependencies(
         session_repository,
