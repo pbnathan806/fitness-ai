@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { useForm, type Resolver } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -15,6 +16,7 @@ import { ErrorState } from "@/components/common/ErrorState"
 import { fromDateTimeLocalValue } from "@/app/pages/sessions/components/dateTimeLocal"
 import { clientService } from "@/services/clientService"
 import { trainerService } from "@/services/trainerService"
+import { assignmentService } from "@/services/assignmentService"
 import { sessionService } from "@/services/sessionService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { SESSION_MEETING_TYPE_LABELS } from "@/lib/sessionMeetingType"
@@ -56,10 +58,16 @@ export function SessionCreatePage() {
         sort_dir: "asc",
       }),
   })
+  const assignmentsQuery = useQuery({
+    queryKey: ["assignments", "lookup"],
+    queryFn: assignmentService.listAssignmentsForLookup,
+  })
 
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<SessionCreateFormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<SessionCreateFormValues>,
@@ -73,6 +81,27 @@ export function SessionCreatePage() {
       trainer_notes: "",
     },
   })
+
+  const selectedClientId = watch("client_id")
+
+  /** Only trainers assigned to the selected client - the backend rejects
+   * any other trainer with TrainerNotAssignedError anyway, so filtering
+   * here just surfaces that constraint up front instead of after submit. */
+  const assignableTrainers = useMemo(() => {
+    if (!selectedClientId) return []
+    const assignedTrainerIds = new Set(
+      (assignmentsQuery.data ?? [])
+        .filter((a) => a.client_id === selectedClientId)
+        .map((a) => a.trainer_id),
+    )
+    return (trainersQuery.data?.items ?? []).filter((t) => assignedTrainerIds.has(t.id))
+  }, [selectedClientId, assignmentsQuery.data, trainersQuery.data])
+
+  // Changing the client can invalidate a previously selected trainer, so
+  // clear it rather than leave a stale, now-unassigned trainer selected.
+  useEffect(() => {
+    setValue("trainer_id", "")
+  }, [selectedClientId, setValue])
 
   const createMutation = useMutation({
     mutationFn: (values: SessionCreateFormValues) =>
@@ -133,20 +162,29 @@ export function SessionCreatePage() {
                 <Select
                   id="trainer_id"
                   aria-invalid={!!errors.trainer_id}
-                  disabled={trainersQuery.isLoading}
+                  disabled={!selectedClientId || trainersQuery.isLoading || assignmentsQuery.isLoading}
                   defaultValue=""
                   {...register("trainer_id")}
                 >
                   <option value="" disabled>
-                    Select a trainer
+                    {selectedClientId ? "Select a trainer" : "Select a client first"}
                   </option>
-                  {(trainersQuery.data?.items ?? []).map((trainer) => (
+                  {assignableTrainers.map((trainer) => (
                     <option key={trainer.id} value={trainer.id}>
                       {trainer.first_name} {trainer.last_name} ({trainer.email})
                     </option>
                   ))}
                 </Select>
                 {errors.trainer_id && <p className="text-sm text-destructive">{errors.trainer_id.message}</p>}
+                {selectedClientId && !assignmentsQuery.isLoading && assignableTrainers.length === 0 && (
+                  <p className="text-xs text-destructive">
+                    This client has no assigned trainers.{" "}
+                    <Link to={`/super-admin/clients/${selectedClientId}/trainers`} className="underline">
+                      Assign one first
+                    </Link>
+                    .
+                  </p>
+                )}
               </div>
             </div>
 
