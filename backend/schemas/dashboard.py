@@ -19,11 +19,11 @@ class SuperAdminDashboardResponse(BaseModel):
     sessions_today: int
     upcoming_sessions_next_7_days: int
     measurements_recorded_this_month: int
-    check_ins_submitted_today: int
+    pending_check_ins: int
     clients_missing_check_ins_today: int
 
 
 class ClientDashboardResponse(BaseModel):
-    check_ins_this_week: int
-    target_check_ins: int | None
-    check_in_adherence_percentage: int
+    completed_check_ins: int
+    expected_check_ins: int
+    adherence_percentage: int

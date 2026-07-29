@@ -138,16 +138,16 @@ def _to_super_admin_response(detail: SuperAdminDashboard) -> SuperAdminDashboard
         sessions_today=detail.sessions_today,
         upcoming_sessions_next_7_days=detail.upcoming_sessions_next_7_days,
         measurements_recorded_this_month=detail.measurements_recorded_this_month,
-        check_ins_submitted_today=detail.check_ins_submitted_today,
+        pending_check_ins=detail.pending_check_ins,
         clients_missing_check_ins_today=detail.clients_missing_check_ins_today,
     )
 
 
 def _to_client_response(detail: ClientDashboard) -> ClientDashboardResponse:
     return ClientDashboardResponse(
-        check_ins_this_week=detail.check_ins_this_week,
-        target_check_ins=detail.target_check_ins,
-        check_in_adherence_percentage=detail.check_in_adherence_percentage,
+        completed_check_ins=detail.completed_check_ins,
+        expected_check_ins=detail.expected_check_ins,
+        adherence_percentage=detail.adherence_percentage,
     )
 
 

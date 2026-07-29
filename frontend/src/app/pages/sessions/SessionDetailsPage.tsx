@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/common/ErrorState"
 import { SessionDetailsCard } from "@/app/pages/sessions/components/SessionDetailsCard"
 import { SessionAttendanceForm } from "@/app/pages/sessions/components/SessionAttendanceForm"
 import { SessionNotesForm } from "@/app/pages/sessions/components/SessionNotesForm"
+import { SessionCheckInCard } from "@/app/pages/sessions/components/SessionCheckInCard"
 import { clientService } from "@/services/clientService"
 import { trainerService } from "@/services/trainerService"
 import { sessionService } from "@/services/sessionService"
@@ -80,6 +81,16 @@ export function SessionDetailsPage() {
     ? `${trainerQuery.data.first_name ?? ""} ${trainerQuery.data.last_name ?? ""}`.trim() || trainerQuery.data.email
     : `Trainer #${session.trainer_id.slice(0, 8)}`
 
+  // The Trainer API never exposes a trainer's underlying user id (only their
+  // profile id), so a submission can only be positively attributed to the
+  // client; anything else is coaching staff acting on the client's behalf.
+  function resolveSubmittedBy(submittedByUserId: string): string {
+    if (clientQuery.data?.user_id === submittedByUserId) {
+      return `${clientName} (Client)`
+    }
+    return "Trainer or Super Admin"
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -99,6 +110,8 @@ export function SessionDetailsPage() {
       </div>
 
       <SessionDetailsCard session={session} clientName={clientName} trainerName={trainerName} />
+
+      <SessionCheckInCard session={session} allowSubmit={false} resolveSubmittedBy={resolveSubmittedBy} />
 
       <Card>
         <CardHeader>

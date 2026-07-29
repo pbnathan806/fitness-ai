@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -9,23 +9,25 @@ from database.base import Base
 
 
 class CheckIn(Base):
-    """A daily client wellness snapshot (Task-19).
+    """A session-centric client wellness snapshot (Check-ins V2).
 
-    Check-ins are immutable: once submitted, a row is never updated or
-    deleted, so a client's wellness history always reflects exactly what was
-    reported on each day. There is intentionally no repository
-    update()/delete() method for this model. Every wellness field is
-    optional but at least one must be populated - enforced in the service
-    layer via utils.check_in.at_least_one_checkin_field_required, not as a DB
-    constraint. Only one check-in may exist per client per calendar day
-    (calendar day computed in the client's timezone) - also enforced in the
-    service layer via utils.check_in.one_check_in_per_client_per_day.
+    Check-ins belong to exactly one Session, and a Session may have at most
+    one Check-in (enforced via UNIQUE(session_id)). Check-ins represent the
+    client's progress since the previous coaching session, and are editable
+    by CLIENT/TRAINER/SUPER_ADMIN until check_in_edit_window_days after
+    Session.scheduled_start (enforced in the service layer, not as a DB
+    constraint). Every wellness field is optional but at least one must be
+    populated - enforced in the service layer via
+    utils.check_in.at_least_one_checkin_field_required.
     """
 
     __tablename__ = "check_ins"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False
     )
     client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False
@@ -50,19 +52,24 @@ class CheckIn(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    # No onupdate=func.now(): check-ins are never updated after creation, so
-    # this always equals created_at (kept as a distinct column only to match
-    # the audit-timestamp convention shared by every other model).
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     client: Mapped["Client"] = relationship(  # noqa: F821
         "Client", foreign_keys=[client_id], back_populates="check_ins"
     )
+    session: Mapped["Session"] = relationship(  # noqa: F821
+        "Session", foreign_keys=[session_id], back_populates="check_in"
+    )
+
+    __table_args__ = (UniqueConstraint("session_id", name="uq_check_ins_session_id"),)
 
     def __repr__(self) -> str:
         return (
-            f"CheckIn(id={self.id!r}, client_id={self.client_id!r}, "
-            f"submitted_at={self.submitted_at!r})"
+            f"CheckIn(id={self.id!r}, session_id={self.session_id!r}, "
+            f"client_id={self.client_id!r}, submitted_at={self.submitted_at!r})"
         )

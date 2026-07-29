@@ -33,6 +33,7 @@ export const NAV_ITEMS: Record<RoleName, NavItem[]> = {
     { label: "Subscription Plans", path: "/super-admin/subscription-plans", icon: Package },
     { label: "Subscriptions", path: "/super-admin/subscriptions", icon: CreditCard },
     { label: "Sessions", path: "/super-admin/sessions", icon: CalendarDays },
+    { label: "Check-ins", path: "/super-admin/check-ins", icon: ClipboardCheck },
     { label: "Reports", path: "/super-admin/reports", icon: BarChart3 },
     { label: "Notifications", path: "/super-admin/notifications", icon: Bell },
     { label: "Settings", path: "/super-admin/settings", icon: Settings },

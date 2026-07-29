@@ -95,6 +95,9 @@ class SessionRepository(ABC):
         client_id: uuid.UUID | None = None,
     ) -> int: ...
 
+    @abstractmethod
+    async def count_non_cancelled(self, *, client_id: uuid.UUID) -> int: ...
+
 
 class SQLAlchemySessionRepository(SessionRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -254,6 +257,14 @@ class SQLAlchemySessionRepository(SessionRepository):
 
         result = await self._session.execute(
             select(func.count()).select_from(Session).where(*conditions)
+        )
+        return result.scalar_one()
+
+    async def count_non_cancelled(self, *, client_id: uuid.UUID) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(Session)
+            .where(Session.client_id == client_id, Session.status != SessionStatus.CANCELLED)
         )
         return result.scalar_one()
 

@@ -10,6 +10,7 @@ import { SessionDetailsCard } from "@/app/pages/sessions/components/SessionDetai
 import { SessionEditForm } from "@/app/pages/sessions/components/SessionEditForm"
 import { SessionAttendanceForm } from "@/app/pages/sessions/components/SessionAttendanceForm"
 import { SessionNotesForm } from "@/app/pages/sessions/components/SessionNotesForm"
+import { SessionCheckInCard } from "@/app/pages/sessions/components/SessionCheckInCard"
 import { clientService } from "@/services/clientService"
 import { trainerService } from "@/services/trainerService"
 import { sessionService } from "@/services/sessionService"
@@ -107,6 +108,8 @@ export function TrainerSessionDetailsPage() {
       </div>
 
       <SessionDetailsCard session={session} clientName={clientName} trainerName={trainerName} />
+
+      <SessionCheckInCard session={session} allowSubmit />
 
       <Card>
         <CardHeader>

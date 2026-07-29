@@ -204,7 +204,7 @@ def test_client_dashboard_returns_404_without_client_profile():
 def test_client_dashboard_succeeds_for_client():
     from tests.services.test_dashboard_service import _build_client_fixture
 
-    fixture = _build_client_fixture(sessions_per_week=3)
+    fixture = _build_client_fixture()
     _override_dependencies(
         fixture["user_id"],
         RoleName.CLIENT,
@@ -219,6 +219,6 @@ def test_client_dashboard_succeeds_for_client():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["target_check_ins"] == 3
-    assert body["check_ins_this_week"] == 0
-    assert body["check_in_adherence_percentage"] == 0
+    assert body["completed_check_ins"] == 0
+    assert body["expected_check_ins"] == 0
+    assert body["adherence_percentage"] == 0

@@ -8,6 +8,7 @@ import { NotFoundPage } from "@/app/pages/NotFoundPage"
 import { PlaceholderPage } from "@/app/pages/PlaceholderPage"
 import { DashboardHomePage } from "@/app/pages/dashboard/DashboardHomePage"
 import { SuperAdminDashboardPage } from "@/app/pages/dashboard/SuperAdminDashboardPage"
+import { ClientDashboardPage } from "@/app/pages/dashboard/ClientDashboardPage"
 import { RoleHomeRedirect } from "@/app/pages/RoleHomeRedirect"
 import { ClientsListPage } from "@/app/pages/clients/ClientsListPage"
 import { ClientCreatePage } from "@/app/pages/clients/ClientCreatePage"
@@ -37,6 +38,7 @@ import { TrainerSessionDetailsPage } from "@/app/pages/trainer/TrainerSessionDet
 import { ClientMySessionsListPage } from "@/app/pages/client/ClientMySessionsListPage"
 import { ClientMySessionDetailsPage } from "@/app/pages/client/ClientMySessionDetailsPage"
 import { ApplicationSettingsPage } from "@/app/pages/applicationSettings/ApplicationSettingsPage"
+import { SuperAdminCheckInsPage } from "@/app/pages/checkIns/SuperAdminCheckInsPage"
 import { Role, type RoleName } from "@/lib/constants"
 import { NAV_ITEMS } from "@/lib/navigation"
 import type { ReactNode } from "react"
@@ -93,6 +95,9 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { path: ":id", element: <SessionDetailsPage /> },
         { path: ":id/edit", element: <SessionEditPage /> },
       ],
+    },
+    "Check-ins": {
+      children: [{ index: true, element: <SuperAdminCheckInsPage /> }],
     },
     Settings: {
       children: [{ index: true, element: <ApplicationSettingsPage /> }],
@@ -194,7 +199,7 @@ export const router = createBrowserRouter([
             element: <AppLayout />,
             children: [
               { index: true, element: <Navigate to="dashboard" replace /> },
-              ...roleSectionChildren(Role.CLIENT),
+              ...roleSectionChildren(Role.CLIENT, <ClientDashboardPage />),
             ],
           },
         ],

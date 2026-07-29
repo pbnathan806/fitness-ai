@@ -5,29 +5,42 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from core.constants import RoleName
+from models.application_setting import ApplicationSetting
 from models.check_in import CheckIn
 from models.client_trainer_assignment import ClientTrainerAssignment
-from repositories.check_in_repository import CheckInRepository
+from models.session import SessionStatus
+from repositories.check_in_repository import CheckInRepository, PendingCheckInRow
+from services.application_setting_service import ApplicationSettingService
 from services.check_in_service import (
+    CheckInEditWindowExpiredError,
     CheckInFieldsRequiredError,
     CheckInNotFoundError,
     CheckInService,
     ClientNotFoundError,
     DuplicateCheckInError,
     ForbiddenError,
+    SessionCancelledError,
+    SessionNotFoundError,
+    SessionNotStartedError,
     TrainerNotAssignedError,
     TrainerNotFoundError,
 )
+from tests.services.test_application_setting_service import FakeApplicationSettingRepository
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_client_service import FakeClientRepository, _make_client
+from tests.services.test_session_service import FakeSessionRepository, _make_session
 
 
 class FakeCheckInRepository(CheckInRepository):
     def __init__(self) -> None:
         self._check_ins: dict[uuid.UUID, CheckIn] = {}
+        self._pending_rows: list[PendingCheckInRow] = []
 
     def seed(self, check_in: CheckIn) -> None:
         self._check_ins[check_in.id] = check_in
+
+    def seed_pending_row(self, row: PendingCheckInRow) -> None:
+        self._pending_rows.append(row)
 
     async def create(self, check_in: CheckIn) -> CheckIn:
         now = datetime.now(timezone.utc)
@@ -37,14 +50,17 @@ class FakeCheckInRepository(CheckInRepository):
         self._check_ins[check_in.id] = check_in
         return check_in
 
+    async def update(self, check_in: CheckIn) -> CheckIn:
+        check_in.updated_at = datetime.now(timezone.utc)
+        self._check_ins[check_in.id] = check_in
+        return check_in
+
     async def get_by_id(self, check_in_id: uuid.UUID) -> CheckIn | None:
         return self._check_ins.get(check_in_id)
 
-    async def get_for_client_in_range(
-        self, client_id: uuid.UUID, start: datetime, end: datetime
-    ) -> CheckIn | None:
+    async def get_by_session_id(self, session_id: uuid.UUID) -> CheckIn | None:
         for check_in in self._check_ins.values():
-            if check_in.client_id == client_id and start <= check_in.submitted_at < end:
+            if check_in.session_id == session_id:
                 return check_in
         return None
 
@@ -82,11 +98,25 @@ class FakeCheckInRepository(CheckInRepository):
             and (client_ids is None or c.client_id in client_ids)
         )
 
+    async def list_pending(
+        self, client_ids: list[uuid.UUID] | None, now: datetime
+    ) -> list[PendingCheckInRow]:
+        if client_ids is None:
+            return list(self._pending_rows)
+        return [row for row in self._pending_rows if row.client_id in client_ids]
 
-def _make_check_in(client_id: uuid.UUID, submitted_by: uuid.UUID, **overrides) -> CheckIn:
+    async def count_pending(self, client_ids: list[uuid.UUID] | None, now: datetime) -> int:
+        return len(await self.list_pending(client_ids, now))
+
+    async def count_for_client(self, client_id: uuid.UUID) -> int:
+        return sum(1 for c in self._check_ins.values() if c.client_id == client_id)
+
+
+def _make_check_in(session_id: uuid.UUID, client_id: uuid.UUID, submitted_by: uuid.UUID, **overrides) -> CheckIn:
     now = datetime.now(timezone.utc)
     defaults = dict(
         id=uuid.uuid4(),
+        session_id=session_id,
         client_id=client_id,
         sleep_hours=7.5,
         water_intake_liters=3,
@@ -104,14 +134,41 @@ def _make_check_in(client_id: uuid.UUID, submitted_by: uuid.UUID, **overrides) -
     return CheckIn(**defaults)
 
 
-def _make_service() -> tuple[
-    CheckInService, FakeCheckInRepository, FakeClientRepository, FakeAssignmentRepository
+def _make_application_setting_service(edit_window_days: int = 30) -> ApplicationSettingService:
+    repository = FakeApplicationSettingRepository()
+    repository.seed(
+        ApplicationSetting(
+            id=uuid.uuid4(),
+            key="check_in_edit_window_days",
+            value=str(edit_window_days),
+            description="Edit window",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    return ApplicationSettingService(repository)
+
+
+def _make_service(edit_window_days: int = 30) -> tuple[
+    CheckInService,
+    FakeCheckInRepository,
+    FakeClientRepository,
+    FakeAssignmentRepository,
+    FakeSessionRepository,
 ]:
     check_in_repository = FakeCheckInRepository()
     client_repository = FakeClientRepository()
     assignment_repository = FakeAssignmentRepository()
-    service = CheckInService(check_in_repository, client_repository, assignment_repository)
-    return service, check_in_repository, client_repository, assignment_repository
+    session_repository = FakeSessionRepository()
+    application_setting_service = _make_application_setting_service(edit_window_days)
+    service = CheckInService(
+        check_in_repository,
+        client_repository,
+        assignment_repository,
+        session_repository,
+        application_setting_service,
+    )
+    return service, check_in_repository, client_repository, assignment_repository, session_repository
 
 
 def _setup_assigned_pair(client_repository, assignment_repository, client_timezone="UTC"):
@@ -129,10 +186,9 @@ def _setup_assigned_pair(client_repository, assignment_repository, client_timezo
     return client, trainer, trainer_user_id
 
 
-def _create_kwargs(client_id: uuid.UUID, **overrides) -> dict:
+def _create_kwargs(session_id: uuid.UUID, **overrides) -> dict:
     defaults = dict(
-        client_id=client_id,
-        submitted_at=None,
+        session_id=session_id,
         sleep_hours=None,
         water_intake_liters=None,
         energy_level=None,
@@ -145,37 +201,47 @@ def _create_kwargs(client_id: uuid.UUID, **overrides) -> dict:
     return defaults
 
 
+def _past_session(session_repository, client_id, trainer_id, **overrides):
+    started = datetime.now(timezone.utc) - timedelta(days=2)
+    session = _make_session(
+        client_id, trainer_id, scheduled_start=started, scheduled_end=started + timedelta(hours=1), **overrides
+    )
+    session_repository.seed(session)
+    return session
+
+
 # --- create_check_in ----------------------------------------------------------
 
 
 def test_create_check_in_succeeds_for_super_admin():
-    service, _, client_repository, assignment_repository = _make_service()
-    client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
 
     detail = asyncio.run(
         service.create_check_in(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
-            **_create_kwargs(client.id, sleep_hours=7.5, mood=5),
+            **_create_kwargs(session.id, sleep_hours=7.5, mood=5),
         )
     )
 
+    assert detail.session_id == session.id
     assert detail.client_id == client.id
     assert detail.sleep_hours == 7.5
     assert detail.mood == 5
 
 
 def test_create_check_in_succeeds_for_assigned_trainer():
-    service, _, client_repository, assignment_repository = _make_service()
-    client, trainer, trainer_user_id = _setup_assigned_pair(
-        client_repository, assignment_repository
-    )
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, trainer_user_id = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
 
     detail = asyncio.run(
         service.create_check_in(
             actor_role=RoleName.TRAINER,
             actor_id=trainer_user_id,
-            **_create_kwargs(client.id, energy_level=4),
+            **_create_kwargs(session.id, energy_level=4),
         )
     )
 
@@ -183,36 +249,18 @@ def test_create_check_in_succeeds_for_assigned_trainer():
     assert detail.submitted_by == trainer_user_id
 
 
-def test_create_check_in_rejects_unassigned_trainer():
-    service, _, client_repository, assignment_repository = _make_service()
-    client = _make_client(user_id=uuid.uuid4())
-    client_repository.seed(client, "client@example.com")
-    trainer_user_id = uuid.uuid4()
-    trainer = _make_trainer(user_id=trainer_user_id)
-    assignment_repository.seed_trainer(trainer)
-    # Note: no assignment created between trainer and client.
-
-    with pytest.raises(TrainerNotAssignedError):
-        asyncio.run(
-            service.create_check_in(
-                actor_role=RoleName.TRAINER,
-                actor_id=trainer_user_id,
-                **_create_kwargs(client.id, mood=3),
-            )
-        )
-
-
 def test_create_check_in_succeeds_for_own_client():
-    service, _, client_repository, assignment_repository = _make_service()
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     client_repository.seed(client, "client@example.com")
+    session = _past_session(session_repository, client.id, uuid.uuid4())
 
     detail = asyncio.run(
         service.create_check_in(
             actor_role=RoleName.CLIENT,
             actor_id=client_user_id,
-            **_create_kwargs(client.id, mood=4, workout_completed=True),
+            **_create_kwargs(session.id, mood=4, workout_completed=True),
         )
     )
 
@@ -221,42 +269,64 @@ def test_create_check_in_succeeds_for_own_client():
     assert detail.mood == 4
 
 
-def test_create_check_in_rejects_client_submitting_for_another_client():
-    service, _, client_repository, assignment_repository = _make_service()
+def test_create_check_in_rejects_unassigned_trainer():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+    session = _past_session(session_repository, client.id, uuid.uuid4())
+    # Note: no assignment created between trainer and client.
+
+    with pytest.raises(TrainerNotAssignedError):
+        asyncio.run(
+            service.create_check_in(
+                actor_role=RoleName.TRAINER,
+                actor_id=trainer_user_id,
+                **_create_kwargs(session.id, mood=3),
+            )
+        )
+
+
+def test_create_check_in_rejects_client_submitting_for_another_clients_session():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
     client_repository.seed(other_client, "other@example.com")
+    session = _past_session(session_repository, other_client.id, uuid.uuid4())
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
             service.create_check_in(
                 actor_role=RoleName.CLIENT,
                 actor_id=client_user_id,
-                **_create_kwargs(other_client.id, mood=4),
+                **_create_kwargs(session.id, mood=4),
             )
         )
 
 
 def test_create_check_in_rejects_empty_payload():
-    service, _, client_repository, assignment_repository = _make_service()
-    client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
 
     with pytest.raises(CheckInFieldsRequiredError):
         asyncio.run(
             service.create_check_in(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
-                **_create_kwargs(client.id),
+                **_create_kwargs(session.id),
             )
         )
 
 
-def test_create_check_in_raises_when_client_missing():
+def test_create_check_in_raises_when_session_missing():
     service, *_ = _make_service()
 
-    with pytest.raises(ClientNotFoundError):
+    with pytest.raises(SessionNotFoundError):
         asyncio.run(
             service.create_check_in(
                 actor_role=RoleName.SUPER_ADMIN,
@@ -267,32 +337,65 @@ def test_create_check_in_raises_when_client_missing():
 
 
 def test_create_check_in_raises_when_trainer_profile_missing():
-    service, _, client_repository, assignment_repository = _make_service()
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
     client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
+    session = _past_session(session_repository, client.id, uuid.uuid4())
 
     with pytest.raises(TrainerNotFoundError):
         asyncio.run(
             service.create_check_in(
                 actor_role=RoleName.TRAINER,
                 actor_id=uuid.uuid4(),
-                **_create_kwargs(client.id, mood=3),
+                **_create_kwargs(session.id, mood=3),
             )
         )
 
 
-def test_create_check_in_prevents_duplicate_for_same_calendar_day():
-    service, _, client_repository, assignment_repository = _make_service()
-    client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
-    today_noon = datetime.now(timezone.utc).replace(
-        hour=12, minute=0, second=0, microsecond=0
+def test_create_check_in_rejects_cancelled_session():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id, status=SessionStatus.CANCELLED)
+
+    with pytest.raises(SessionCancelledError):
+        asyncio.run(
+            service.create_check_in(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                **_create_kwargs(session.id, mood=3),
+            )
+        )
+
+
+def test_create_check_in_rejects_session_not_yet_started():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    future_start = datetime.now(timezone.utc) + timedelta(days=1)
+    session = _make_session(
+        client.id, trainer.id, scheduled_start=future_start, scheduled_end=future_start + timedelta(hours=1)
     )
+    session_repository.seed(session)
+
+    with pytest.raises(SessionNotStartedError):
+        asyncio.run(
+            service.create_check_in(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                **_create_kwargs(session.id, mood=3),
+            )
+        )
+
+
+def test_create_check_in_prevents_duplicate_for_session():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
 
     asyncio.run(
         service.create_check_in(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
-            **_create_kwargs(client.id, submitted_at=today_noon, mood=3),
+            **_create_kwargs(session.id, mood=3),
         )
     )
 
@@ -301,25 +404,22 @@ def test_create_check_in_prevents_duplicate_for_same_calendar_day():
             service.create_check_in(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
-                **_create_kwargs(
-                    client.id, submitted_at=today_noon + timedelta(hours=2), mood=5
-                ),
+                **_create_kwargs(session.id, mood=5),
             )
         )
 
 
-def test_create_check_in_allows_second_check_in_on_a_different_day():
-    service, _, client_repository, assignment_repository = _make_service()
-    client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
-    today_noon = datetime.now(timezone.utc).replace(
-        hour=12, minute=0, second=0, microsecond=0
-    )
+def test_create_check_in_allows_second_session_for_same_client():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session_one = _past_session(session_repository, client.id, trainer.id)
+    session_two = _past_session(session_repository, client.id, trainer.id)
 
     asyncio.run(
         service.create_check_in(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
-            **_create_kwargs(client.id, submitted_at=today_noon, mood=3),
+            **_create_kwargs(session_one.id, mood=3),
         )
     )
 
@@ -327,13 +427,131 @@ def test_create_check_in_allows_second_check_in_on_a_different_day():
         service.create_check_in(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
-            **_create_kwargs(
-                client.id, submitted_at=today_noon + timedelta(days=1), mood=5
-            ),
+            **_create_kwargs(session_two.id, mood=5),
         )
     )
 
     assert detail.mood == 5
+
+
+# --- update_check_in -----------------------------------------------------------
+
+
+def test_update_check_in_succeeds_within_edit_window():
+    service, check_in_repository, client_repository, assignment_repository, session_repository = _make_service(
+        edit_window_days=30
+    )
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
+    check_in = _make_check_in(session.id, client.id, trainer.id, mood=3)
+    check_in_repository.seed(check_in)
+
+    detail = asyncio.run(
+        service.update_check_in(
+            actor_role=RoleName.SUPER_ADMIN,
+            actor_id=uuid.uuid4(),
+            check_in_id=check_in.id,
+            values={"mood": 5},
+        )
+    )
+
+    assert detail.mood == 5
+    assert detail.sleep_hours == check_in.sleep_hours  # untouched fields preserved
+
+
+def test_update_check_in_rejects_after_edit_window_expired():
+    service, check_in_repository, client_repository, assignment_repository, session_repository = _make_service(
+        edit_window_days=1
+    )
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    started = datetime.now(timezone.utc) - timedelta(days=5)
+    session = _make_session(
+        client.id, trainer.id, scheduled_start=started, scheduled_end=started + timedelta(hours=1)
+    )
+    session_repository.seed(session)
+    check_in = _make_check_in(session.id, client.id, trainer.id, mood=3)
+    check_in_repository.seed(check_in)
+
+    with pytest.raises(CheckInEditWindowExpiredError):
+        asyncio.run(
+            service.update_check_in(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                check_in_id=check_in.id,
+                values={"mood": 5},
+            )
+        )
+
+
+def test_update_check_in_rejects_forbidden_actor():
+    service, check_in_repository, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    other_client_user_id = uuid.uuid4()
+    other_client = _make_client(user_id=other_client_user_id)
+    client_repository.seed(other_client, "other@example.com")
+    session = _past_session(session_repository, client.id, trainer.id)
+    check_in = _make_check_in(session.id, client.id, trainer.id, mood=3)
+    check_in_repository.seed(check_in)
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.update_check_in(
+                actor_role=RoleName.CLIENT,
+                actor_id=other_client_user_id,
+                check_in_id=check_in.id,
+                values={"mood": 5},
+            )
+        )
+
+
+def test_update_check_in_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(CheckInNotFoundError):
+        asyncio.run(
+            service.update_check_in(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                check_in_id=uuid.uuid4(),
+                values={"mood": 5},
+            )
+        )
+
+
+def test_update_check_in_rejects_clearing_all_fields():
+    service, check_in_repository, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
+    check_in = _make_check_in(
+        session.id,
+        client.id,
+        trainer.id,
+        sleep_hours=7.5,
+        water_intake_liters=3,
+        energy_level=4,
+        mood=5,
+        workout_completed=True,
+        diet_followed=True,
+        notes=None,
+    )
+    check_in_repository.seed(check_in)
+
+    with pytest.raises(CheckInFieldsRequiredError):
+        asyncio.run(
+            service.update_check_in(
+                actor_role=RoleName.SUPER_ADMIN,
+                actor_id=uuid.uuid4(),
+                check_in_id=check_in.id,
+                values={
+                    "sleep_hours": None,
+                    "water_intake_liters": None,
+                    "energy_level": None,
+                    "mood": None,
+                    "workout_completed": None,
+                    "diet_followed": None,
+                },
+            )
+        )
 
 
 # --- list_check_ins -------------------------------------------------------------
@@ -342,7 +560,7 @@ def test_create_check_in_allows_second_check_in_on_a_different_day():
 def test_list_check_ins_returns_all_for_super_admin():
     service, check_in_repository, *_ = _make_service()
     for _ in range(3):
-        check_in_repository.seed(_make_check_in(uuid.uuid4(), uuid.uuid4()))
+        check_in_repository.seed(_make_check_in(uuid.uuid4(), uuid.uuid4(), uuid.uuid4()))
 
     result = asyncio.run(
         service.list_check_ins(
@@ -355,14 +573,12 @@ def test_list_check_ins_returns_all_for_super_admin():
 
 
 def test_list_check_ins_returns_only_assigned_clients_for_trainer():
-    service, check_in_repository, client_repository, assignment_repository = _make_service()
-    client, trainer, trainer_user_id = _setup_assigned_pair(
-        client_repository, assignment_repository
-    )
+    service, check_in_repository, client_repository, assignment_repository, _ = _make_service()
+    client, trainer, trainer_user_id = _setup_assigned_pair(client_repository, assignment_repository)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(other_client, "other@example.com")
-    check_in_repository.seed(_make_check_in(client.id, trainer.id))
-    check_in_repository.seed(_make_check_in(other_client.id, uuid.uuid4()))
+    check_in_repository.seed(_make_check_in(uuid.uuid4(), client.id, trainer.id))
+    check_in_repository.seed(_make_check_in(uuid.uuid4(), other_client.id, uuid.uuid4()))
 
     result = asyncio.run(
         service.list_check_ins(
@@ -375,13 +591,13 @@ def test_list_check_ins_returns_only_assigned_clients_for_trainer():
 
 
 def test_list_check_ins_returns_only_own_for_client():
-    service, check_in_repository, client_repository, _ = _make_service()
+    service, check_in_repository, client_repository, _, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
-    check_in_repository.seed(_make_check_in(client.id, uuid.uuid4()))
-    check_in_repository.seed(_make_check_in(other_client.id, uuid.uuid4()))
+    check_in_repository.seed(_make_check_in(uuid.uuid4(), client.id, uuid.uuid4()))
+    check_in_repository.seed(_make_check_in(uuid.uuid4(), other_client.id, uuid.uuid4()))
 
     result = asyncio.run(
         service.list_check_ins(
@@ -393,15 +609,15 @@ def test_list_check_ins_returns_only_own_for_client():
     assert result.items[0].client_id == client.id
 
 
-# --- get_check_in / view access -------------------------------------------------
+# --- get_check_in / get_check_in_by_session -------------------------------------
 
 
 def test_get_check_in_succeeds_for_owning_client():
-    service, check_in_repository, client_repository, _ = _make_service()
+    service, check_in_repository, client_repository, _, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     client_repository.seed(client, "client@example.com")
-    check_in = _make_check_in(client.id, uuid.uuid4())
+    check_in = _make_check_in(uuid.uuid4(), client.id, uuid.uuid4())
     check_in_repository.seed(check_in)
 
     detail = asyncio.run(
@@ -414,11 +630,11 @@ def test_get_check_in_succeeds_for_owning_client():
 
 
 def test_get_check_in_rejects_non_owning_client():
-    service, check_in_repository, client_repository, _ = _make_service()
+    service, check_in_repository, client_repository, _, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     client_repository.seed(client, "client@example.com")
-    check_in = _make_check_in(uuid.uuid4(), uuid.uuid4())
+    check_in = _make_check_in(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
     check_in_repository.seed(check_in)
 
     with pytest.raises(ForbiddenError):
@@ -429,33 +645,54 @@ def test_get_check_in_rejects_non_owning_client():
         )
 
 
-def test_get_check_in_rejects_non_assigned_trainer():
-    service, check_in_repository, client_repository, assignment_repository = _make_service()
-    trainer_user_id = uuid.uuid4()
-    trainer = _make_trainer(user_id=trainer_user_id)
-    assignment_repository.seed_trainer(trainer)
-    check_in = _make_check_in(uuid.uuid4(), uuid.uuid4())
-    check_in_repository.seed(check_in)
-
-    with pytest.raises(ForbiddenError):
-        asyncio.run(
-            service.get_check_in(
-                actor_role=RoleName.TRAINER,
-                actor_id=trainer_user_id,
-                check_in_id=check_in.id,
-            )
-        )
-
-
 def test_get_check_in_raises_not_found():
     service, *_ = _make_service()
 
     with pytest.raises(CheckInNotFoundError):
         asyncio.run(
             service.get_check_in(
-                actor_role=RoleName.SUPER_ADMIN,
-                actor_id=uuid.uuid4(),
-                check_in_id=uuid.uuid4(),
+                actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), check_in_id=uuid.uuid4()
+            )
+        )
+
+
+def test_get_check_in_by_session_returns_detail():
+    service, check_in_repository, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
+    check_in = _make_check_in(session.id, client.id, trainer.id, mood=4)
+    check_in_repository.seed(check_in)
+
+    detail = asyncio.run(
+        service.get_check_in_by_session(
+            actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), session_id=session.id
+        )
+    )
+
+    assert detail.id == check_in.id
+    assert detail.mood == 4
+
+
+def test_get_check_in_by_session_raises_not_found_without_check_in():
+    service, _, client_repository, assignment_repository, session_repository = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    session = _past_session(session_repository, client.id, trainer.id)
+
+    with pytest.raises(CheckInNotFoundError):
+        asyncio.run(
+            service.get_check_in_by_session(
+                actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), session_id=session.id
+            )
+        )
+
+
+def test_get_check_in_by_session_raises_session_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(SessionNotFoundError):
+        asyncio.run(
+            service.get_check_in_by_session(
+                actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), session_id=uuid.uuid4()
             )
         )
 
@@ -464,14 +701,12 @@ def test_get_check_in_raises_not_found():
 
 
 def test_get_client_check_ins_preserves_full_history():
-    service, check_in_repository, client_repository, assignment_repository = _make_service()
-    client, trainer, trainer_user_id = _setup_assigned_pair(
-        client_repository, assignment_repository
-    )
+    service, check_in_repository, client_repository, assignment_repository, _ = _make_service()
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
     now = datetime.now(timezone.utc)
-    first = _make_check_in(client.id, trainer.id, mood=3, submitted_at=now - timedelta(days=2))
-    second = _make_check_in(client.id, trainer.id, mood=4, submitted_at=now - timedelta(days=1))
-    third = _make_check_in(client.id, trainer.id, mood=5, submitted_at=now)
+    first = _make_check_in(uuid.uuid4(), client.id, trainer.id, mood=3, submitted_at=now - timedelta(days=2))
+    second = _make_check_in(uuid.uuid4(), client.id, trainer.id, mood=4, submitted_at=now - timedelta(days=1))
+    third = _make_check_in(uuid.uuid4(), client.id, trainer.id, mood=5, submitted_at=now)
     check_in_repository.seed(first)
     check_in_repository.seed(second)
     check_in_repository.seed(third)
@@ -487,7 +722,7 @@ def test_get_client_check_ins_preserves_full_history():
 
 
 def test_get_client_check_ins_rejects_non_owning_client():
-    service, _, client_repository, _ = _make_service()
+    service, _, client_repository, _, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     other_client = _make_client(user_id=uuid.uuid4())
@@ -502,34 +737,75 @@ def test_get_client_check_ins_rejects_non_owning_client():
         )
 
 
-# --- get_latest_check_in ---------------------------------------------------------
+# --- list_pending_check_ins -----------------------------------------------------
 
 
-def test_get_latest_check_in_returns_most_recent():
-    service, check_in_repository, client_repository, assignment_repository = _make_service()
+def test_list_pending_check_ins_returns_all_for_super_admin():
+    service, check_in_repository, client_repository, assignment_repository, _ = _make_service()
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    now = datetime.now(timezone.utc)
-    older = _make_check_in(client.id, trainer.id, mood=3, submitted_at=now - timedelta(days=1))
-    newest = _make_check_in(client.id, trainer.id, mood=5, submitted_at=now)
-    check_in_repository.seed(older)
-    check_in_repository.seed(newest)
-
-    latest = asyncio.run(
-        service.get_latest_check_in(
-            actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), client_id=client.id
+    other_client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(other_client, "other@example.com")
+    scheduled_start = datetime.now(timezone.utc) - timedelta(days=2)
+    check_in_repository.seed_pending_row(
+        PendingCheckInRow(
+            session_id=uuid.uuid4(),
+            client_id=client.id,
+            client_name="Jane Doe",
+            scheduled_start=scheduled_start,
+        )
+    )
+    check_in_repository.seed_pending_row(
+        PendingCheckInRow(
+            session_id=uuid.uuid4(),
+            client_id=other_client.id,
+            client_name="Other Client",
+            scheduled_start=scheduled_start,
         )
     )
 
-    assert latest.mood == 5
+    result = asyncio.run(
+        service.list_pending_check_ins(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
+    )
+
+    assert len(result) == 2
+    assert result[0].days_pending == 2
 
 
-def test_get_latest_check_in_raises_not_found_without_any_check_ins():
-    service, _, client_repository, assignment_repository = _make_service()
-    client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
+def test_list_pending_check_ins_scoped_to_assigned_clients_for_trainer():
+    service, check_in_repository, client_repository, assignment_repository, _ = _make_service()
+    client, trainer, trainer_user_id = _setup_assigned_pair(client_repository, assignment_repository)
+    other_client = _make_client(user_id=uuid.uuid4())
+    client_repository.seed(other_client, "other@example.com")
+    scheduled_start = datetime.now(timezone.utc) - timedelta(days=1)
+    check_in_repository.seed_pending_row(
+        PendingCheckInRow(
+            session_id=uuid.uuid4(),
+            client_id=client.id,
+            client_name="Jane Doe",
+            scheduled_start=scheduled_start,
+        )
+    )
+    check_in_repository.seed_pending_row(
+        PendingCheckInRow(
+            session_id=uuid.uuid4(),
+            client_id=other_client.id,
+            client_name="Other Client",
+            scheduled_start=scheduled_start,
+        )
+    )
 
-    with pytest.raises(CheckInNotFoundError):
+    result = asyncio.run(
+        service.list_pending_check_ins(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert len(result) == 1
+    assert result[0].client_id == client.id
+
+
+def test_list_pending_check_ins_rejects_client_role():
+    service, *_ = _make_service()
+
+    with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.get_latest_check_in(
-                actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), client_id=client.id
-            )
+            service.list_pending_check_ins(actor_role=RoleName.CLIENT, actor_id=uuid.uuid4())
         )

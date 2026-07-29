@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -27,13 +27,7 @@ from tests.services.test_measurement_service import FakeMeasurementRepository, _
 from tests.services.test_session_service import FakeSessionRepository, _make_session
 from tests.services.test_subscription_plan_service import _make_plan
 from tests.services.test_subscription_service import FakeSubscriptionRepository, _make_subscription
-from utils.dashboard import (
-    client_last_n_days_range_utc,
-    client_week_range_utc,
-    ist_month_range_utc,
-    ist_next_days_range_utc,
-    ist_today_range_utc,
-)
+from utils.dashboard import ist_next_days_range_utc, ist_today_range_utc
 from utils.subscription import current_india_date
 
 
@@ -62,6 +56,7 @@ class FakeDashboardRepository(DashboardRepository):
         day_end: datetime,
         now: datetime,
     ) -> int:
+        checked_in_session_ids = {check_in.session_id for check_in in self._check_ins}
         count = 0
         for session in self._sessions:
             if session.status == SessionStatus.CANCELLED:
@@ -72,13 +67,9 @@ class FakeDashboardRepository(DashboardRepository):
                 continue
             if client_ids is not None and session.client_id not in client_ids:
                 continue
-            has_check_in = any(
-                check_in.client_id == session.client_id
-                and day_start <= check_in.submitted_at < day_end
-                for check_in in self._check_ins
-            )
-            if not has_check_in:
-                count += 1
+            if session.id in checked_in_session_ids:
+                continue
+            count += 1
         return count
 
 
@@ -118,6 +109,19 @@ def _make_service(
 
 def _midpoint(start: datetime, end: datetime) -> datetime:
     return start + (end - start) / 2
+
+
+def _seed_pending(check_in_repository: FakeCheckInRepository, session: Session, client_name: str = "Test Client") -> None:
+    from repositories.check_in_repository import PendingCheckInRow
+
+    check_in_repository.seed_pending_row(
+        PendingCheckInRow(
+            session_id=session.id,
+            client_id=session.client_id,
+            client_name=client_name,
+            scheduled_start=session.scheduled_start,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +230,7 @@ def _build_shared_fixture():
     today_session_time = _midpoint(today_start, now)
     week_start, _ = ist_next_days_range_utc(7)
 
-    # client_a: session today, no check-in today -> pending.
+    # client_a: session today, no check-in -> pending.
     session_a = _make_session(
         client_a.id,
         trainer.id,
@@ -236,8 +240,9 @@ def _build_shared_fixture():
     )
     session_repository.seed(session_a)
     dashboard_repository.seed_session(session_a)
+    _seed_pending(check_in_repository, session_a, client_name="Client A")
 
-    # client_b: session today, check-in already submitted today -> not pending.
+    # client_b: session today, check-in already submitted -> not pending.
     session_b = _make_session(
         client_b.id,
         trainer.id,
@@ -247,12 +252,12 @@ def _build_shared_fixture():
     )
     session_repository.seed(session_b)
     dashboard_repository.seed_session(session_b)
-    check_in_b = _make_check_in(client_b.id, uuid.uuid4(), submitted_at=today_session_time)
+    check_in_b = _make_check_in(session_b.id, client_b.id, uuid.uuid4(), submitted_at=today_session_time)
     check_in_repository.seed(check_in_b)
     dashboard_repository.seed_check_in(check_in_b)
 
-    # client_a: a future session later this week (not today) -> only counted
-    # in the 7-day window, not in sessions_today.
+    # client_a: a future session later this week (not today, not yet
+    # started) -> only counted in the 7-day window, never "pending".
     future_time = week_start + timedelta(days=3)
     session_future = _make_session(
         client_a.id,
@@ -312,7 +317,7 @@ def test_super_admin_dashboard_computes_all_fields():
     assert dashboard.sessions_today == 2
     assert dashboard.upcoming_sessions_next_7_days == 3
     assert dashboard.measurements_recorded_this_month == 1
-    assert dashboard.check_ins_submitted_today == 1
+    assert dashboard.pending_check_ins == 1
     assert dashboard.clients_missing_check_ins_today == 1
 
 
@@ -321,7 +326,7 @@ def test_super_admin_dashboard_computes_all_fields():
 # ---------------------------------------------------------------------------
 
 
-def _build_client_fixture(*, sessions_per_week: int | None = 3):
+def _build_client_fixture():
     client_repository = FakeClientRepository()
     session_repository = FakeSessionRepository()
     check_in_repository = FakeCheckInRepository()
@@ -332,19 +337,6 @@ def _build_client_fixture(*, sessions_per_week: int | None = 3):
     client_repository.seed(client, "client@example.com")
 
     trainer_id = uuid.uuid4()
-    plan = _make_plan(sessions_per_week=sessions_per_week)
-
-    if sessions_per_week is not None:
-        today = current_india_date()
-        subscription_repository.seed(
-            _make_subscription(
-                client.id,
-                plan.id,
-                start_date=today - timedelta(days=10),
-                end_date=today + timedelta(days=20),
-                plan_sessions_per_week=sessions_per_week,
-            )
-        )
 
     return {
         "client_repository": client_repository,
@@ -357,103 +349,38 @@ def _build_client_fixture(*, sessions_per_week: int | None = 3):
     }
 
 
-def test_client_dashboard_target_check_ins_from_latest_subscription():
-    fixture = _build_client_fixture(sessions_per_week=4)
-    service = _make_service(
-        client_repository=fixture["client_repository"],
-        session_repository=fixture["session_repository"],
-        check_in_repository=fixture["check_in_repository"],
-        subscription_repository=fixture["subscription_repository"],
-    )
-
-    dashboard = asyncio.run(
-        service.get_client_dashboard(actor_role=RoleName.CLIENT, actor_id=fixture["user_id"])
-    )
-
-    assert dashboard.target_check_ins == 4
-
-
-def test_client_dashboard_target_check_ins_none_without_subscription():
-    fixture = _build_client_fixture(sessions_per_week=None)
-    service = _make_service(
-        client_repository=fixture["client_repository"],
-        session_repository=fixture["session_repository"],
-        check_in_repository=fixture["check_in_repository"],
-        subscription_repository=fixture["subscription_repository"],
-    )
-
-    dashboard = asyncio.run(
-        service.get_client_dashboard(actor_role=RoleName.CLIENT, actor_id=fixture["user_id"])
-    )
-
-    assert dashboard.target_check_ins is None
-
-
-def test_client_dashboard_check_ins_this_week():
+def test_client_dashboard_counts_completed_and_expected_check_ins():
     fixture = _build_client_fixture()
     client = fixture["client"]
-    week_start, week_end = client_week_range_utc(client.timezone)
-    in_week_time = _midpoint(week_start, week_end)
+    now = datetime.now(timezone.utc)
 
-    fixture["check_in_repository"].seed(
-        _make_check_in(client.id, uuid.uuid4(), submitted_at=in_week_time)
-    )
-    fixture["check_in_repository"].seed(
-        _make_check_in(client.id, uuid.uuid4(), submitted_at=in_week_time + timedelta(minutes=1))
-    )
-    # Outside the week window - must not be counted.
-    fixture["check_in_repository"].seed(
-        _make_check_in(client.id, uuid.uuid4(), submitted_at=week_start - timedelta(days=10))
-    )
-
-    service = _make_service(
-        client_repository=fixture["client_repository"],
-        session_repository=fixture["session_repository"],
-        check_in_repository=fixture["check_in_repository"],
-        subscription_repository=fixture["subscription_repository"],
-    )
-
-    dashboard = asyncio.run(
-        service.get_client_dashboard(actor_role=RoleName.CLIENT, actor_id=fixture["user_id"])
-    )
-
-    assert dashboard.check_ins_this_week == 2
-
-
-def test_client_dashboard_adherence_percentage():
-    fixture = _build_client_fixture()
-    client = fixture["client"]
-    window_start, window_end = client_last_n_days_range_utc(client.timezone, 90)
-    in_window_time = _midpoint(window_start, window_end)
-
-    # 4 non-cancelled sessions in the window (expected), 1 cancelled (excluded).
-    for offset_minutes in range(4):
-        fixture["session_repository"].seed(
-            _make_session(
-                client.id,
-                fixture["trainer_id"],
-                scheduled_start=in_window_time + timedelta(minutes=offset_minutes),
-                scheduled_end=in_window_time + timedelta(minutes=offset_minutes + 60),
-                status=SessionStatus.SCHEDULED,
-            )
-        )
-    fixture["session_repository"].seed(
+    # 3 non-cancelled sessions, 2 with a check-in (completed), 1 without.
+    sessions = [
         _make_session(
             client.id,
             fixture["trainer_id"],
-            scheduled_start=in_window_time + timedelta(minutes=100),
-            scheduled_end=in_window_time + timedelta(minutes=160),
-            status=SessionStatus.CANCELLED,
+            scheduled_start=now - timedelta(days=offset + 1),
+            scheduled_end=now - timedelta(days=offset + 1) + timedelta(minutes=60),
+            status=SessionStatus.SCHEDULED,
         )
-    )
-
-    # 3 check-ins submitted in the window.
-    for offset_minutes in range(3):
+        for offset in range(3)
+    ]
+    for session in sessions:
+        fixture["session_repository"].seed(session)
+    for session in sessions[:2]:
         fixture["check_in_repository"].seed(
-            _make_check_in(
-                client.id, uuid.uuid4(), submitted_at=in_window_time + timedelta(minutes=offset_minutes)
-            )
+            _make_check_in(session.id, client.id, uuid.uuid4(), submitted_at=session.scheduled_start)
         )
+
+    # 1 cancelled session - excluded from expected_check_ins entirely.
+    cancelled = _make_session(
+        client.id,
+        fixture["trainer_id"],
+        scheduled_start=now - timedelta(days=10),
+        scheduled_end=now - timedelta(days=10) + timedelta(minutes=60),
+        status=SessionStatus.CANCELLED,
+    )
+    fixture["session_repository"].seed(cancelled)
 
     service = _make_service(
         client_repository=fixture["client_repository"],
@@ -466,7 +393,9 @@ def test_client_dashboard_adherence_percentage():
         service.get_client_dashboard(actor_role=RoleName.CLIENT, actor_id=fixture["user_id"])
     )
 
-    assert dashboard.check_in_adherence_percentage == 75
+    assert dashboard.completed_check_ins == 2
+    assert dashboard.expected_check_ins == 3
+    assert dashboard.adherence_percentage == 67
 
 
 def test_client_dashboard_adherence_zero_when_no_expected_sessions():
@@ -482,4 +411,6 @@ def test_client_dashboard_adherence_zero_when_no_expected_sessions():
         service.get_client_dashboard(actor_role=RoleName.CLIENT, actor_id=fixture["user_id"])
     )
 
-    assert dashboard.check_in_adherence_percentage == 0
+    assert dashboard.completed_check_ins == 0
+    assert dashboard.expected_check_ins == 0
+    assert dashboard.adherence_percentage == 0

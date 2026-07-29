@@ -1,5 +1,6 @@
 import { apiClient } from "@/services/apiClient"
 import type {
+  ClientDashboardStats,
   DashboardCheckIn,
   DashboardClient,
   DashboardMeasurement,
@@ -17,6 +18,11 @@ const ACTIVITY_LIST_PAGE_SIZE = 5
 export const dashboardService = {
   async getSuperAdminStats(): Promise<SuperAdminDashboardStats> {
     const { data } = await apiClient.get<SuperAdminDashboardStats>("/dashboard/super-admin")
+    return data
+  },
+
+  async getClientStats(): Promise<ClientDashboardStats> {
+    const { data } = await apiClient.get<ClientDashboardStats>("/dashboard/client")
     return data
   },
 

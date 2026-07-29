@@ -7,8 +7,22 @@ export interface SuperAdminDashboardStats {
   sessions_today: number
   upcoming_sessions_next_7_days: number
   measurements_recorded_this_month: number
-  check_ins_submitted_today: number
+  pending_check_ins: number
   clients_missing_check_ins_today: number
+}
+
+export interface PendingCheckIn {
+  session_id: string
+  client_id: string
+  client_name: string
+  scheduled_start: string
+  days_pending: number
+}
+
+export interface ClientDashboardStats {
+  completed_check_ins: number
+  expected_check_ins: number
+  adherence_percentage: number
 }
 
 export interface PaginatedResponse<T> {

@@ -180,6 +180,13 @@ class FakeSessionRepository(SessionRepository):
             and (client_id is None or s.client_id == client_id)
         )
 
+    async def count_non_cancelled(self, *, client_id: uuid.UUID) -> int:
+        return sum(
+            1
+            for s in self._sessions.values()
+            if s.client_id == client_id and s.status != SessionStatus.CANCELLED
+        )
+
 
 def _make_session(client_id: uuid.UUID, trainer_id: uuid.UUID, **overrides) -> Session:
     now = datetime.now(timezone.utc)

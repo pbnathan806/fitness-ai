@@ -8,6 +8,7 @@ interface StatCardProps {
   value: number
   icon: LucideIcon
   tone?: "default" | "success" | "warning" | "destructive"
+  suffix?: string
 }
 
 const TONE_CLASSES: Record<NonNullable<StatCardProps["tone"]>, string> = {
@@ -17,7 +18,7 @@ const TONE_CLASSES: Record<NonNullable<StatCardProps["tone"]>, string> = {
   destructive: "bg-destructive/10 text-destructive",
 }
 
-export function StatCard({ label, value, icon: Icon, tone = "default" }: StatCardProps) {
+export function StatCard({ label, value, icon: Icon, tone = "default", suffix = "" }: StatCardProps) {
   return (
     <Card>
       <CardContent className="flex items-center gap-3">
@@ -25,7 +26,10 @@ export function StatCard({ label, value, icon: Icon, tone = "default" }: StatCar
           <Icon className="size-5" aria-hidden="true" />
         </div>
         <div className="min-w-0">
-          <p className="text-2xl font-semibold tabular-nums">{value.toLocaleString()}</p>
+          <p className="text-2xl font-semibold tabular-nums">
+            {value.toLocaleString()}
+            {suffix}
+          </p>
           <p className="text-xs leading-tight text-muted-foreground">{label}</p>
         </div>
       </CardContent>

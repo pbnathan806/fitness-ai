@@ -13,16 +13,12 @@ from repositories.subscription_repository import SubscriptionRepository
 from services.application_setting_service import ApplicationSettingService
 from utils.dashboard import (
     classify_client_state,
-    client_last_n_days_range_utc,
-    client_week_range_utc,
     is_measurement_overdue,
     ist_month_range_utc,
     ist_next_days_range_utc,
     ist_today_range_utc,
 )
 from utils.subscription import current_india_date
-
-_ADHERENCE_WINDOW_DAYS = 90
 
 
 class ForbiddenError(Exception):
@@ -57,15 +53,15 @@ class SuperAdminDashboard:
     sessions_today: int
     upcoming_sessions_next_7_days: int
     measurements_recorded_this_month: int
-    check_ins_submitted_today: int
+    pending_check_ins: int
     clients_missing_check_ins_today: int
 
 
 @dataclass(frozen=True)
 class ClientDashboard:
-    check_ins_this_week: int
-    target_check_ins: int | None
-    check_in_adherence_percentage: int
+    completed_check_ins: int
+    expected_check_ins: int
+    adherence_percentage: int
 
 
 class DashboardService:
@@ -151,9 +147,7 @@ class DashboardService:
         upcoming_sessions_next_7_days = await self._session_repository.count_in_range(
             week_start, week_end, trainer_id=trainer_id, exclude_cancelled=True
         )
-        pending_check_ins = await self._dashboard_repository.count_pending_check_ins(
-            client_ids, today_start, today_end, now
-        )
+        pending_check_ins = await self._check_in_repository.count_pending(client_ids, now)
 
         return TrainerDashboard(
             assigned_clients=len(client_ids),
@@ -201,9 +195,7 @@ class DashboardService:
         measurements_recorded_this_month = await self._measurement_repository.count_in_range(
             month_start, month_end
         )
-        check_ins_submitted_today = await self._check_in_repository.count_in_range(
-            today_start, today_end
-        )
+        pending_check_ins = await self._check_in_repository.count_pending(None, now)
         clients_missing_check_ins_today = await self._dashboard_repository.count_pending_check_ins(
             None, today_start, today_end, now
         )
@@ -217,7 +209,7 @@ class DashboardService:
             sessions_today=sessions_today,
             upcoming_sessions_next_7_days=upcoming_sessions_next_7_days,
             measurements_recorded_this_month=measurements_recorded_this_month,
-            check_ins_submitted_today=check_ins_submitted_today,
+            pending_check_ins=pending_check_ins,
             clients_missing_check_ins_today=clients_missing_check_ins_today,
         )
 
@@ -232,32 +224,16 @@ class DashboardService:
             raise ClientProfileNotFoundError("No client profile exists for the current user.")
 
         client = client_record.client
-        week_start, week_end = client_week_range_utc(client.timezone)
-        window_start, window_end = client_last_n_days_range_utc(
-            client.timezone, _ADHERENCE_WINDOW_DAYS
-        )
-
-        check_ins_this_week = await self._check_in_repository.count_in_range(
-            week_start, week_end, client_ids=[client.id]
-        )
-
-        latest_subscription = await self._subscription_repository.get_latest_for_client(client.id)
-        target_check_ins = (
-            latest_subscription.plan_sessions_per_week if latest_subscription else None
-        )
-
-        submitted_check_ins = await self._check_in_repository.count_in_range(
-            window_start, window_end, client_ids=[client.id]
-        )
-        expected_check_ins = await self._session_repository.count_in_range(
-            window_start, window_end, client_id=client.id, exclude_cancelled=True
+        completed_check_ins = await self._check_in_repository.count_for_client(client.id)
+        expected_check_ins = await self._session_repository.count_non_cancelled(
+            client_id=client.id
         )
         adherence_percentage = (
-            round(submitted_check_ins / expected_check_ins * 100) if expected_check_ins > 0 else 0
+            round(completed_check_ins / expected_check_ins * 100) if expected_check_ins > 0 else 0
         )
 
         return ClientDashboard(
-            check_ins_this_week=check_ins_this_week,
-            target_check_ins=target_check_ins,
-            check_in_adherence_percentage=adherence_percentage,
+            completed_check_ins=completed_check_ins,
+            expected_check_ins=expected_check_ins,
+            adherence_percentage=adherence_percentage,
         )

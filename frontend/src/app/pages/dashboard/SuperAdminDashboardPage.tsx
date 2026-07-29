@@ -1,6 +1,16 @@
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Users, UserCheck, UserX, UserCog, CalendarCheck, CalendarRange, ClipboardX, Ruler } from "lucide-react"
+import {
+  Users,
+  UserCheck,
+  UserX,
+  UserCog,
+  CalendarCheck,
+  CalendarRange,
+  ClipboardX,
+  ClipboardCheck,
+  Ruler,
+} from "lucide-react"
 import { dashboardService } from "@/services/dashboardService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { ErrorState } from "@/components/common/ErrorState"
@@ -69,7 +79,7 @@ export function SuperAdminDashboardPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {statsQuery.isLoading || !stats ? (
-          Array.from({ length: 8 }).map((_, i) => <StatCardSkeleton key={i} />)
+          Array.from({ length: 9 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
             <StatCard label="Total Clients" value={stats.total_clients} icon={Users} />
@@ -92,6 +102,12 @@ export function SuperAdminDashboardPage() {
               value={stats.clients_missing_check_ins_today}
               icon={ClipboardX}
               tone="warning"
+            />
+            <StatCard
+              label="Pending Check-ins"
+              value={stats.pending_check_ins}
+              icon={ClipboardCheck}
+              tone={stats.pending_check_ins > 0 ? "warning" : "default"}
             />
           </>
         )}

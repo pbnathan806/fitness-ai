@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/common/LoadingSpinner"
 import { ErrorState } from "@/components/common/ErrorState"
+import { SessionCheckInCard } from "@/app/pages/sessions/components/SessionCheckInCard"
 import { sessionService } from "@/services/sessionService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDateTime } from "@/lib/format"
@@ -110,6 +111,8 @@ export function ClientMySessionDetailsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <SessionCheckInCard session={session} allowSubmit />
     </div>
   )
 }

@@ -5,26 +5,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import CurrentUser, get_current_user
 from database.session import get_db
+from repositories.application_setting_repository import (
+    ApplicationSettingRepository,
+    SQLAlchemyApplicationSettingRepository,
+)
 from repositories.assignment_repository import (
     AssignmentRepository,
     SQLAlchemyAssignmentRepository,
 )
 from repositories.check_in_repository import CheckInRepository, SQLAlchemyCheckInRepository
 from repositories.client_repository import ClientRepository, SQLAlchemyClientRepository
+from repositories.session_repository import SessionRepository, SQLAlchemySessionRepository
 from schemas.check_in import (
     CheckInCreateRequest,
     CheckInResponse,
-    LatestCheckInResponse,
+    CheckInUpdateRequest,
     PaginatedCheckInsResponse,
+    PendingCheckInResponse,
 )
+from services.application_setting_service import ApplicationSettingService
 from services.check_in_service import (
     CheckInDetail,
+    CheckInEditWindowExpiredError,
     CheckInFieldsRequiredError,
     CheckInNotFoundError,
     CheckInService,
     ClientNotFoundError,
     DuplicateCheckInError,
     ForbiddenError,
+    PendingCheckInDetail,
+    SessionCancelledError,
+    SessionNotFoundError,
+    SessionNotStartedError,
     TrainerNotAssignedError,
     TrainerNotFoundError,
 )
@@ -46,17 +58,46 @@ def get_assignment_repository(
     return SQLAlchemyAssignmentRepository(session)
 
 
+def get_session_repository(session: AsyncSession = Depends(get_db)) -> SessionRepository:
+    return SQLAlchemySessionRepository(session)
+
+
+def get_application_setting_repository(
+    session: AsyncSession = Depends(get_db),
+) -> ApplicationSettingRepository:
+    return SQLAlchemyApplicationSettingRepository(session)
+
+
+def get_application_setting_service(
+    application_setting_repository: ApplicationSettingRepository = Depends(
+        get_application_setting_repository
+    ),
+) -> ApplicationSettingService:
+    return ApplicationSettingService(application_setting_repository)
+
+
 def get_check_in_service(
     check_in_repository: CheckInRepository = Depends(get_check_in_repository),
     client_repository: ClientRepository = Depends(get_client_repository),
     assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
+    session_repository: SessionRepository = Depends(get_session_repository),
+    application_setting_service: ApplicationSettingService = Depends(
+        get_application_setting_service
+    ),
 ) -> CheckInService:
-    return CheckInService(check_in_repository, client_repository, assignment_repository)
+    return CheckInService(
+        check_in_repository,
+        client_repository,
+        assignment_repository,
+        session_repository,
+        application_setting_service,
+    )
 
 
 def _to_response(detail: CheckInDetail) -> CheckInResponse:
     return CheckInResponse(
         id=detail.id,
+        session_id=detail.session_id,
         client_id=detail.client_id,
         sleep_hours=detail.sleep_hours,
         water_intake_liters=detail.water_intake_liters,
@@ -72,6 +113,16 @@ def _to_response(detail: CheckInDetail) -> CheckInResponse:
     )
 
 
+def _to_pending_response(detail: PendingCheckInDetail) -> PendingCheckInResponse:
+    return PendingCheckInResponse(
+        session_id=detail.session_id,
+        client_id=detail.client_id,
+        client_name=detail.client_name,
+        scheduled_start=detail.scheduled_start,
+        days_pending=detail.days_pending,
+    )
+
+
 @router.post("", response_model=CheckInResponse, status_code=status.HTTP_201_CREATED)
 async def create_check_in(
     payload: CheckInCreateRequest,
@@ -82,8 +133,7 @@ async def create_check_in(
         detail = await check_in_service.create_check_in(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
-            client_id=payload.client_id,
-            submitted_at=payload.submitted_at,
+            session_id=payload.session_id,
             sleep_hours=payload.sleep_hours,
             water_intake_liters=payload.water_intake_liters,
             energy_level=payload.energy_level,
@@ -94,15 +144,13 @@ async def create_check_in(
         )
     except ForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except ClientNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except TrainerNotFoundError as exc:
+    except (SessionNotFoundError, TrainerNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TrainerNotAssignedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except CheckInFieldsRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except DuplicateCheckInError as exc:
+    except (SessionCancelledError, SessionNotStartedError, DuplicateCheckInError) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return _to_response(detail)
@@ -137,36 +185,46 @@ async def list_check_ins(
     )
 
 
-@router.get(
-    "/client/{client_id}/latest",
-    response_model=LatestCheckInResponse,
-    status_code=status.HTTP_200_OK,
-)
-async def get_latest_check_in(
-    client_id: uuid.UUID,
+@router.get("/pending", response_model=list[PendingCheckInResponse], status_code=status.HTTP_200_OK)
+async def list_pending_check_ins(
     current_user: CurrentUser = Depends(get_current_user),
     check_in_service: CheckInService = Depends(get_check_in_service),
-) -> LatestCheckInResponse:
+) -> list[PendingCheckInResponse]:
     try:
-        detail = await check_in_service.get_latest_check_in(
+        items = await check_in_service.list_pending_check_ins(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
-            client_id=client_id,
         )
     except ForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except (ClientNotFoundError, CheckInNotFoundError) as exc:
+    except TrainerNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    return LatestCheckInResponse(
-        sleep_hours=detail.sleep_hours,
-        water_intake_liters=detail.water_intake_liters,
-        energy_level=detail.energy_level,
-        mood=detail.mood,
-        workout_completed=detail.workout_completed,
-        diet_followed=detail.diet_followed,
-        submitted_at=detail.submitted_at,
-    )
+    return [_to_pending_response(item) for item in items]
+
+
+@router.get(
+    "/session/{session_id}",
+    response_model=CheckInResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_check_in_by_session(
+    session_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    check_in_service: CheckInService = Depends(get_check_in_service),
+) -> CheckInResponse:
+    try:
+        detail = await check_in_service.get_check_in_by_session(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            session_id=session_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except (SessionNotFoundError, CheckInNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_response(detail)
 
 
 @router.get(
@@ -209,5 +267,31 @@ async def get_check_in(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except CheckInNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_response(detail)
+
+
+@router.patch("/{check_in_id}", response_model=CheckInResponse, status_code=status.HTTP_200_OK)
+async def update_check_in(
+    check_in_id: uuid.UUID,
+    payload: CheckInUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    check_in_service: CheckInService = Depends(get_check_in_service),
+) -> CheckInResponse:
+    try:
+        detail = await check_in_service.update_check_in(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            check_in_id=check_in_id,
+            values=payload.model_dump(exclude_unset=True),
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CheckInNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CheckInFieldsRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except CheckInEditWindowExpiredError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return _to_response(detail)

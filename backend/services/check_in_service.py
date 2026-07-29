@@ -1,18 +1,16 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
 from core.constants import RoleName
 from models.check_in import CheckIn
+from models.session import SessionStatus
 from repositories.assignment_repository import AssignmentRepository
 from repositories.check_in_repository import CheckInRepository
 from repositories.client_repository import ClientRepository
-from utils.check_in import (
-    at_least_one_checkin_field_required,
-    check_in_day_range_utc,
-    one_check_in_per_client_per_day,
-)
+from repositories.session_repository import SessionRepository
+from services.application_setting_service import ApplicationSettingService
+from utils.check_in import CHECK_IN_FIELDS, at_least_one_checkin_field_required
 
 
 class ForbiddenError(Exception):
@@ -32,20 +30,37 @@ class TrainerNotAssignedError(Exception):
 
 
 class CheckInFieldsRequiredError(Exception):
-    """Raised when a create request has no check-in fields populated."""
+    """Raised when a request would leave a check-in with no populated fields."""
 
 
 class DuplicateCheckInError(Exception):
-    """Raised when a check-in already exists for the client on the target day."""
+    """Raised when the target session already has a check-in."""
 
 
 class CheckInNotFoundError(Exception):
-    """Raised when no check-in exists for the requested identifier."""
+    """Raised when no check-in exists for the requested identifier/session."""
+
+
+class SessionNotFoundError(Exception):
+    """Raised when no session exists for the requested identifier."""
+
+
+class SessionCancelledError(Exception):
+    """Raised when a check-in is attempted against a CANCELLED session."""
+
+
+class SessionNotStartedError(Exception):
+    """Raised when a check-in is attempted before the session has started."""
+
+
+class CheckInEditWindowExpiredError(Exception):
+    """Raised when a check-in edit is attempted after the configured edit window."""
 
 
 @dataclass(frozen=True)
 class CheckInDetail:
     id: uuid.UUID
+    session_id: uuid.UUID
     client_id: uuid.UUID
     sleep_hours: float | None
     water_intake_liters: float | None
@@ -69,19 +84,18 @@ class PaginatedCheckIns:
 
 
 @dataclass(frozen=True)
-class LatestCheckInDetail:
-    sleep_hours: float | None
-    water_intake_liters: float | None
-    energy_level: int | None
-    mood: int | None
-    workout_completed: bool | None
-    diet_followed: bool | None
-    submitted_at: object
+class PendingCheckInDetail:
+    session_id: uuid.UUID
+    client_id: uuid.UUID
+    client_name: str
+    scheduled_start: datetime
+    days_pending: int
 
 
 def _to_detail(check_in: CheckIn) -> CheckInDetail:
     return CheckInDetail(
         id=check_in.id,
+        session_id=check_in.session_id,
         client_id=check_in.client_id,
         sleep_hours=check_in.sleep_hours,
         water_intake_liters=check_in.water_intake_liters,
@@ -97,26 +111,15 @@ def _to_detail(check_in: CheckIn) -> CheckInDetail:
     )
 
 
-def _to_latest_detail(check_in: CheckIn, client_timezone: str) -> LatestCheckInDetail:
-    local_submitted_at = check_in.submitted_at.astimezone(ZoneInfo(client_timezone)).date()
-    return LatestCheckInDetail(
-        sleep_hours=check_in.sleep_hours,
-        water_intake_liters=check_in.water_intake_liters,
-        energy_level=check_in.energy_level,
-        mood=check_in.mood,
-        workout_completed=check_in.workout_completed,
-        diet_followed=check_in.diet_followed,
-        submitted_at=local_submitted_at,
-    )
-
-
 class CheckInService:
-    """Business logic for daily client wellness check-ins and their RBAC rules (Task-19).
+    """Business logic for session-centric client wellness check-ins (Check-ins V2).
 
-    Check-ins are immutable point-in-time snapshots: a SUPER_ADMIN, an
-    assigned TRAINER, or the CLIENT themself may submit one, nothing about it
-    is ever edited or removed, and only one may exist per client per
-    calendar day (calendar day computed in the client's timezone).
+    A Check-in belongs to exactly one Session and represents the client's
+    progress since the previous coaching session. CLIENT, assigned TRAINER,
+    and SUPER_ADMIN may submit or edit a check-in (retroactively, since
+    trainers frequently forget to enter them right after a session), but
+    edits are only allowed until check_in_edit_window_days after
+    Session.scheduled_start.
     """
 
     def __init__(
@@ -124,10 +127,14 @@ class CheckInService:
         check_in_repository: CheckInRepository,
         client_repository: ClientRepository,
         assignment_repository: AssignmentRepository,
+        session_repository: SessionRepository,
+        application_setting_service: ApplicationSettingService,
     ) -> None:
         self._check_in_repository = check_in_repository
         self._client_repository = client_repository
         self._assignment_repository = assignment_repository
+        self._session_repository = session_repository
+        self._application_setting_service = application_setting_service
 
     async def _authorize(
         self, actor_role: str | None, actor_id: uuid.UUID, client_id: uuid.UUID
@@ -152,8 +159,7 @@ class CheckInService:
         self,
         actor_role: str | None,
         actor_id: uuid.UUID,
-        client_id: uuid.UUID,
-        submitted_at: datetime | None,
+        session_id: uuid.UUID,
         sleep_hours: float | None,
         water_intake_liters: float | None,
         energy_level: int | None,
@@ -162,18 +168,33 @@ class CheckInService:
         diet_followed: bool | None,
         notes: str | None,
     ) -> CheckInDetail:
-        client_record = await self._client_repository.get_by_id(client_id)
-        if client_record is None:
-            raise ClientNotFoundError(f"Client '{client_id}' was not found.")
+        session = await self._session_repository.get_by_id(session_id)
+        if session is None:
+            raise SessionNotFoundError(f"Session '{session_id}' was not found.")
 
         if actor_role == RoleName.TRAINER:
             trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
             if trainer_id is None:
                 raise TrainerNotFoundError("No trainer profile exists for the current user.")
-            if not await self._assignment_repository.exists_for_pair(client_id, trainer_id):
-                raise TrainerNotAssignedError(f"Trainer is not assigned to client '{client_id}'.")
+            if not await self._assignment_repository.exists_for_pair(
+                session.client_id, trainer_id
+            ):
+                raise TrainerNotAssignedError(
+                    f"Trainer is not assigned to client '{session.client_id}'."
+                )
         else:
-            await self._authorize(actor_role, actor_id, client_id)
+            await self._authorize(actor_role, actor_id, session.client_id)
+
+        if session.status == SessionStatus.CANCELLED:
+            raise SessionCancelledError("Cannot submit a check-in for a cancelled session.")
+
+        if session.scheduled_start >= datetime.now(timezone.utc):
+            raise SessionNotStartedError(
+                "Cannot submit a check-in before the session has started."
+            )
+
+        if await self._check_in_repository.get_by_session_id(session_id) is not None:
+            raise DuplicateCheckInError(f"A check-in already exists for session '{session_id}'.")
 
         values = {
             "sleep_hours": sleep_hours,
@@ -187,26 +208,53 @@ class CheckInService:
         if not at_least_one_checkin_field_required(values):
             raise CheckInFieldsRequiredError("At least one check-in field must be provided.")
 
-        target_submitted_at = submitted_at or datetime.now(timezone.utc)
-        client_timezone = client_record.client.timezone
-        local_date = target_submitted_at.astimezone(ZoneInfo(client_timezone)).date()
-        range_start, range_end = check_in_day_range_utc(local_date, client_timezone)
-
-        existing = await self._check_in_repository.get_for_client_in_range(
-            client_id, range_start, range_end
-        )
-        if not one_check_in_per_client_per_day(existing):
-            raise DuplicateCheckInError("Check-in already exists for this date.")
-
         check_in = await self._check_in_repository.create(
             CheckIn(
-                client_id=client_id,
+                session_id=session_id,
+                client_id=session.client_id,
                 submitted_by=actor_id,
-                submitted_at=target_submitted_at,
+                submitted_at=datetime.now(timezone.utc),
                 **values,
             )
         )
         return _to_detail(check_in)
+
+    async def update_check_in(
+        self,
+        actor_role: str | None,
+        actor_id: uuid.UUID,
+        check_in_id: uuid.UUID,
+        values: dict,
+    ) -> CheckInDetail:
+        check_in = await self._check_in_repository.get_by_id(check_in_id)
+        if check_in is None:
+            raise CheckInNotFoundError(f"Check-in '{check_in_id}' was not found.")
+
+        await self._authorize(actor_role, actor_id, check_in.client_id)
+
+        # session_id is a NOT NULL FK with no delete path for sessions, so the
+        # referenced Session always exists.
+        session = await self._session_repository.get_by_id(check_in.session_id)
+        edit_window_days = await self._application_setting_service.get_int(
+            "check_in_edit_window_days"
+        )
+        deadline = session.scheduled_start + timedelta(days=edit_window_days)
+        if datetime.now(timezone.utc) > deadline:
+            raise CheckInEditWindowExpiredError(
+                "This check-in can no longer be modified. The configured edit window "
+                "has expired."
+            )
+
+        current_values = {field: getattr(check_in, field) for field in CHECK_IN_FIELDS}
+        merged_values = {**current_values, **values}
+        if not at_least_one_checkin_field_required(merged_values):
+            raise CheckInFieldsRequiredError("At least one check-in field must be provided.")
+
+        for field, value in values.items():
+            setattr(check_in, field, value)
+
+        updated = await self._check_in_repository.update(check_in)
+        return _to_detail(updated)
 
     async def list_check_ins(
         self, actor_role: str | None, actor_id: uuid.UUID, page: int, page_size: int
@@ -253,6 +301,20 @@ class CheckInService:
         await self._authorize(actor_role, actor_id, check_in.client_id)
         return _to_detail(check_in)
 
+    async def get_check_in_by_session(
+        self, actor_role: str | None, actor_id: uuid.UUID, session_id: uuid.UUID
+    ) -> CheckInDetail:
+        session = await self._session_repository.get_by_id(session_id)
+        if session is None:
+            raise SessionNotFoundError(f"Session '{session_id}' was not found.")
+
+        await self._authorize(actor_role, actor_id, session.client_id)
+
+        check_in = await self._check_in_repository.get_by_session_id(session_id)
+        if check_in is None:
+            raise CheckInNotFoundError(f"No check-in exists for session '{session_id}'.")
+        return _to_detail(check_in)
+
     async def get_client_check_ins(
         self, actor_role: str | None, actor_id: uuid.UUID, client_id: uuid.UUID
     ) -> list[CheckInDetail]:
@@ -264,17 +326,31 @@ class CheckInService:
         check_ins = await self._check_in_repository.list_all_for_client(client_id)
         return [_to_detail(check_in) for check_in in check_ins]
 
-    async def get_latest_check_in(
-        self, actor_role: str | None, actor_id: uuid.UUID, client_id: uuid.UUID
-    ) -> LatestCheckInDetail:
-        client_record = await self._client_repository.get_by_id(client_id)
-        if client_record is None:
-            raise ClientNotFoundError(f"Client '{client_id}' was not found.")
+    async def list_pending_check_ins(
+        self, actor_role: str | None, actor_id: uuid.UUID
+    ) -> list[PendingCheckInDetail]:
+        if actor_role == RoleName.SUPER_ADMIN:
+            client_ids = None
+        elif actor_role == RoleName.TRAINER:
+            trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
+            if trainer_id is None:
+                raise TrainerNotFoundError("No trainer profile exists for the current user.")
+            assigned_clients = await self._assignment_repository.list_clients_for_trainer(
+                trainer_id
+            )
+            client_ids = [record.client.id for record in assigned_clients]
+        else:
+            raise ForbiddenError("Not authorized to view pending check-ins.")
 
-        await self._authorize(actor_role, actor_id, client_id)
-
-        check_ins = await self._check_in_repository.list_all_for_client(client_id)
-        if not check_ins:
-            raise CheckInNotFoundError(f"No check-ins recorded for client '{client_id}'.")
-
-        return _to_latest_detail(check_ins[0], client_record.client.timezone)
+        now = datetime.now(timezone.utc)
+        rows = await self._check_in_repository.list_pending(client_ids, now)
+        return [
+            PendingCheckInDetail(
+                session_id=row.session_id,
+                client_id=row.client_id,
+                client_name=row.client_name,
+                scheduled_start=row.scheduled_start,
+                days_pending=(now - row.scheduled_start).days,
+            )
+            for row in rows
+        ]

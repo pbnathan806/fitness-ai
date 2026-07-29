@@ -50,12 +50,8 @@ class SQLAlchemyDashboardRepository(DashboardRepository):
         if client_ids is not None and not client_ids:
             return 0
 
-        has_check_in_today = exists(
-            select(CheckIn.id).where(
-                CheckIn.client_id == Session.client_id,
-                CheckIn.submitted_at >= day_start,
-                CheckIn.submitted_at < day_end,
-            )
+        has_check_in = exists(
+            select(CheckIn.id).where(CheckIn.session_id == Session.id)
         )
 
         conditions = [
@@ -63,7 +59,7 @@ class SQLAlchemyDashboardRepository(DashboardRepository):
             Session.scheduled_start >= day_start,
             Session.scheduled_start < day_end,
             Session.scheduled_start < now,
-            ~has_check_in_today,
+            ~has_check_in,
         ]
         if client_ids is not None:
             conditions.append(Session.client_id.in_(client_ids))

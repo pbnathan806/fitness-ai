@@ -125,6 +125,9 @@ class Session(Base):
     trainer: Mapped["TrainerProfile"] = relationship(  # noqa: F821
         "TrainerProfile", foreign_keys=[trainer_id], back_populates="sessions"
     )
+    check_in: Mapped["CheckIn | None"] = relationship(  # noqa: F821
+        "CheckIn", foreign_keys="CheckIn.session_id", back_populates="session", uselist=False
+    )
 
     def __repr__(self) -> str:
         return (
