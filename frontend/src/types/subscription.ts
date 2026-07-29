@@ -67,6 +67,18 @@ export interface SubscriptionEligibility {
   can_schedule_sessions: boolean
 }
 
+/** A future SCHEDULED session that would be cancelled if a stale-ACTIVE
+ * subscription (status ACTIVE, end_date already passed) were expired. */
+export interface AffectedSession {
+  id: string
+  scheduled_start: string
+}
+
+export interface SubscriptionExpireResult {
+  subscription: Subscription
+  sessions_cancelled: number
+}
+
 export interface SubscriptionPlan {
   id: string
   name: string

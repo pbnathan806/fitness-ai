@@ -111,6 +111,26 @@ class FakeSessionRepository(SessionRepository):
             in (SessionStatus.SCHEDULED, SessionStatus.COMPLETED, SessionStatus.RESCHEDULED)
         )
 
+    async def list_scheduled_for_subscription_after(
+        self, subscription_id: uuid.UUID, after: datetime
+    ) -> list[Session]:
+        matched = [
+            s
+            for s in self._sessions.values()
+            if s.subscription_id == subscription_id
+            and s.status == SessionStatus.SCHEDULED
+            and s.scheduled_start > after
+        ]
+        return sorted(matched, key=lambda s: s.scheduled_start)
+
+    async def cancel_scheduled_for_subscription_after(
+        self, subscription_id: uuid.UUID, after: datetime
+    ) -> int:
+        matched = await self.list_scheduled_for_subscription_after(subscription_id, after)
+        for s in matched:
+            s.status = SessionStatus.CANCELLED
+        return len(matched)
+
     async def count_in_range(
         self,
         start: datetime,

@@ -1,11 +1,13 @@
 import asyncio
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 import pytest
 
 from core.constants import RoleName
 from models.client_trainer_assignment import ClientTrainerAssignment
+from models.session import SessionStatus
 from models.subscription import Subscription, SubscriptionPaymentStatus, SubscriptionStatus
 from repositories.subscription_repository import SubscriptionRepository
 from services.subscription_service import (
@@ -21,6 +23,13 @@ from services.subscription_service import (
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_client_service import FakeClientRepository, _make_client
 from tests.services.test_subscription_plan_service import FakeSubscriptionPlanRepository, _make_plan
+
+# test_session_service.py imports FakeSubscriptionRepository/_make_subscription
+# from this module, so FakeSessionRepository/_make_session are imported
+# locally (inside functions) below rather than at module level, to avoid a
+# circular import.
+if TYPE_CHECKING:
+    from tests.services.test_session_service import FakeSessionRepository
 
 
 class FakeSubscriptionRepository(SubscriptionRepository):
@@ -129,15 +138,19 @@ def _make_service() -> tuple[
     FakeClientRepository,
     FakeAssignmentRepository,
 ]:
+    from tests.services.test_session_service import FakeSessionRepository
+
     subscription_repository = FakeSubscriptionRepository()
     subscription_plan_repository = FakeSubscriptionPlanRepository()
     client_repository = FakeClientRepository()
     assignment_repository = FakeAssignmentRepository()
+    session_repository = FakeSessionRepository()
     service = SubscriptionService(
         subscription_repository,
         subscription_plan_repository,
         client_repository,
         assignment_repository,
+        session_repository,
     )
     return (
         service,
@@ -145,6 +158,41 @@ def _make_service() -> tuple[
         subscription_plan_repository,
         client_repository,
         assignment_repository,
+    )
+
+
+def _make_service_with_sessions() -> tuple[
+    SubscriptionService,
+    FakeSubscriptionRepository,
+    FakeSubscriptionPlanRepository,
+    FakeClientRepository,
+    FakeAssignmentRepository,
+    "FakeSessionRepository",
+]:
+    """Like _make_service, but also exposes the FakeSessionRepository - used
+    only by the expire_subscription/get_expiry_impact tests, which need to
+    seed and inspect sessions directly."""
+    from tests.services.test_session_service import FakeSessionRepository
+
+    subscription_repository = FakeSubscriptionRepository()
+    subscription_plan_repository = FakeSubscriptionPlanRepository()
+    client_repository = FakeClientRepository()
+    assignment_repository = FakeAssignmentRepository()
+    session_repository = FakeSessionRepository()
+    service = SubscriptionService(
+        subscription_repository,
+        subscription_plan_repository,
+        client_repository,
+        assignment_repository,
+        session_repository,
+    )
+    return (
+        service,
+        subscription_repository,
+        subscription_plan_repository,
+        client_repository,
+        assignment_repository,
+        session_repository,
     )
 
 
@@ -572,5 +620,143 @@ def test_update_subscription_raises_not_found():
                 actor_role=RoleName.SUPER_ADMIN,
                 subscription_id=uuid.uuid4(),
                 values={"status": SubscriptionStatus.CANCELLED},
+            )
+        )
+
+
+# --- get_expiry_impact / expire_subscription ---------------------------------
+
+
+def _seed_stale_subscription_with_sessions():
+    from tests.services.test_session_service import _make_session
+
+    (
+        service,
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        session_repository,
+    ) = _make_service_with_sessions()
+    client = _make_client(user_id=uuid.uuid4())
+    trainer = _make_trainer(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    plan = _make_plan()
+    plan_repository.seed(plan)
+    subscription = _make_subscription(
+        client.id,
+        plan.id,
+        status=SubscriptionStatus.ACTIVE,
+        end_date=date.today() - timedelta(days=10),
+    )
+    subscription_repository.seed(subscription)
+
+    now = datetime.now(timezone.utc)
+    future_session = _make_session(
+        client.id,
+        trainer.id,
+        subscription_id=subscription.id,
+        status=SessionStatus.SCHEDULED,
+        scheduled_start=now + timedelta(days=3),
+        scheduled_end=now + timedelta(days=3, hours=1),
+    )
+    past_session = _make_session(
+        client.id,
+        trainer.id,
+        subscription_id=subscription.id,
+        status=SessionStatus.SCHEDULED,
+        scheduled_start=now - timedelta(days=3),
+        scheduled_end=now - timedelta(days=3) + timedelta(hours=1),
+    )
+    other_subscription_session = _make_session(
+        client.id,
+        trainer.id,
+        subscription_id=uuid.uuid4(),
+        status=SessionStatus.SCHEDULED,
+        scheduled_start=now + timedelta(days=5),
+        scheduled_end=now + timedelta(days=5, hours=1),
+    )
+    already_completed = _make_session(
+        client.id,
+        trainer.id,
+        subscription_id=subscription.id,
+        status=SessionStatus.COMPLETED,
+        scheduled_start=now + timedelta(days=4),
+        scheduled_end=now + timedelta(days=4, hours=1),
+    )
+    session_repository.seed(future_session)
+    session_repository.seed(past_session)
+    session_repository.seed(other_subscription_session)
+    session_repository.seed(already_completed)
+
+    return service, subscription, session_repository, future_session, already_completed
+
+
+def test_get_expiry_impact_returns_only_future_scheduled_sessions_for_that_subscription():
+    service, subscription, _, future_session, _ = _seed_stale_subscription_with_sessions()
+
+    impact = asyncio.run(
+        service.get_expiry_impact(actor_role=RoleName.SUPER_ADMIN, subscription_id=subscription.id)
+    )
+
+    assert [s.id for s in impact] == [future_session.id]
+
+
+def test_get_expiry_impact_rejects_non_super_admin():
+    service, *_ = _make_service()
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.get_expiry_impact(actor_role=RoleName.TRAINER, subscription_id=uuid.uuid4())
+        )
+
+
+def test_get_expiry_impact_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(SubscriptionNotFoundError):
+        asyncio.run(
+            service.get_expiry_impact(
+                actor_role=RoleName.SUPER_ADMIN, subscription_id=uuid.uuid4()
+            )
+        )
+
+
+def test_expire_subscription_marks_expired_and_cancels_future_sessions_only():
+    service, subscription, session_repository, future_session, already_completed = (
+        _seed_stale_subscription_with_sessions()
+    )
+
+    result = asyncio.run(
+        service.expire_subscription(actor_role=RoleName.SUPER_ADMIN, subscription_id=subscription.id)
+    )
+
+    assert result.subscription.status == SubscriptionStatus.EXPIRED
+    assert result.sessions_cancelled == 1
+
+    updated_future = asyncio.run(session_repository.get_by_id(future_session.id))
+    assert updated_future.status == SessionStatus.CANCELLED
+
+    # COMPLETED sessions are left untouched - only future SCHEDULED ones are cancelled.
+    updated_completed = asyncio.run(session_repository.get_by_id(already_completed.id))
+    assert updated_completed.status == SessionStatus.COMPLETED
+
+
+def test_expire_subscription_rejects_non_super_admin():
+    service, *_ = _make_service()
+
+    with pytest.raises(ForbiddenError):
+        asyncio.run(
+            service.expire_subscription(actor_role=RoleName.TRAINER, subscription_id=uuid.uuid4())
+        )
+
+
+def test_expire_subscription_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(SubscriptionNotFoundError):
+        asyncio.run(
+            service.expire_subscription(
+                actor_role=RoleName.SUPER_ADMIN, subscription_id=uuid.uuid4()
             )
         )

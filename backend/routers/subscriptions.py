@@ -10,6 +10,7 @@ from repositories.assignment_repository import (
     SQLAlchemyAssignmentRepository,
 )
 from repositories.client_repository import ClientRepository, SQLAlchemyClientRepository
+from repositories.session_repository import SessionRepository, SQLAlchemySessionRepository
 from repositories.subscription_plan_repository import (
     SQLAlchemySubscriptionPlanRepository,
     SubscriptionPlanRepository,
@@ -19,17 +20,21 @@ from repositories.subscription_repository import (
     SubscriptionRepository,
 )
 from schemas.subscription import (
+    AffectedSessionResponse,
     ClientSubscriptionResponse,
     PaginatedSubscriptionsResponse,
     SubscriptionCreateRequest,
     SubscriptionEligibilityResponse,
+    SubscriptionExpireResponse,
     SubscriptionResponse,
     SubscriptionUpdateRequest,
 )
 from services.subscription_service import (
     ActiveSubscriptionExistsError,
+    AffectedSession,
     ClientNotFoundError,
     ClientSubscriptionSummary,
+    ExpireSubscriptionResult,
     ForbiddenError,
     ImmutableFieldError,
     SubscriptionDetail,
@@ -65,6 +70,10 @@ def get_assignment_repository(
     return SQLAlchemyAssignmentRepository(session)
 
 
+def get_session_repository(session: AsyncSession = Depends(get_db)) -> SessionRepository:
+    return SQLAlchemySessionRepository(session)
+
+
 def get_subscription_service(
     subscription_repository: SubscriptionRepository = Depends(get_subscription_repository),
     subscription_plan_repository: SubscriptionPlanRepository = Depends(
@@ -72,12 +81,14 @@ def get_subscription_service(
     ),
     client_repository: ClientRepository = Depends(get_client_repository),
     assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
+    session_repository: SessionRepository = Depends(get_session_repository),
 ) -> SubscriptionService:
     return SubscriptionService(
         subscription_repository,
         subscription_plan_repository,
         client_repository,
         assignment_repository,
+        session_repository,
     )
 
 
@@ -122,6 +133,17 @@ def _to_eligibility_response(item: SubscriptionEligibility) -> SubscriptionEligi
         status=item.status,
         end_date=item.end_date,
         can_schedule_sessions=item.can_schedule_sessions,
+    )
+
+
+def _to_affected_session_response(item: AffectedSession) -> AffectedSessionResponse:
+    return AffectedSessionResponse(id=item.id, scheduled_start=item.scheduled_start)
+
+
+def _to_expire_response(result: ExpireSubscriptionResult) -> SubscriptionExpireResponse:
+    return SubscriptionExpireResponse(
+        subscription=_to_response(result.subscription),
+        sessions_cancelled=result.sessions_cancelled,
     )
 
 
@@ -222,6 +244,52 @@ async def get_client_eligibility(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return _to_eligibility_response(item)
+
+
+@router.get(
+    "/{subscription_id}/expiry-impact",
+    response_model=list[AffectedSessionResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_subscription_expiry_impact(
+    subscription_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    subscription_service: SubscriptionService = Depends(get_subscription_service),
+) -> list[AffectedSessionResponse]:
+    try:
+        impact = await subscription_service.get_expiry_impact(
+            actor_role=current_user.active_role,
+            subscription_id=subscription_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except SubscriptionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return [_to_affected_session_response(item) for item in impact]
+
+
+@router.post(
+    "/{subscription_id}/expire",
+    response_model=SubscriptionExpireResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def expire_subscription(
+    subscription_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    subscription_service: SubscriptionService = Depends(get_subscription_service),
+) -> SubscriptionExpireResponse:
+    try:
+        result = await subscription_service.expire_subscription(
+            actor_role=current_user.active_role,
+            subscription_id=subscription_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except SubscriptionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_expire_response(result)
 
 
 @router.get(

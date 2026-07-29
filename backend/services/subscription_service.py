@@ -1,11 +1,12 @@
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from core.constants import RoleName
 from models.subscription import Subscription, SubscriptionPaymentStatus, SubscriptionStatus
 from repositories.assignment_repository import AssignmentRepository
 from repositories.client_repository import ClientRepository
+from repositories.session_repository import SessionRepository
 from repositories.subscription_plan_repository import SubscriptionPlanRepository
 from repositories.subscription_repository import SubscriptionRepository
 from utils.subscription import can_schedule_sessions, current_india_date
@@ -105,6 +106,21 @@ class SubscriptionEligibility:
     can_schedule_sessions: bool
 
 
+@dataclass(frozen=True)
+class AffectedSession:
+    """A future SCHEDULED session that would be cancelled by expiring a
+    subscription - used to preview the impact before the admin confirms."""
+
+    id: uuid.UUID
+    scheduled_start: datetime
+
+
+@dataclass(frozen=True)
+class ExpireSubscriptionResult:
+    subscription: SubscriptionDetail
+    sessions_cancelled: int
+
+
 def _to_detail(subscription: Subscription) -> SubscriptionDetail:
     return SubscriptionDetail(
         id=subscription.id,
@@ -155,11 +171,13 @@ class SubscriptionService:
         subscription_plan_repository: SubscriptionPlanRepository,
         client_repository: ClientRepository,
         assignment_repository: AssignmentRepository,
+        session_repository: SessionRepository,
     ) -> None:
         self._subscription_repository = subscription_repository
         self._subscription_plan_repository = subscription_plan_repository
         self._client_repository = client_repository
         self._assignment_repository = assignment_repository
+        self._session_repository = session_repository
 
     async def create_subscription(
         self,
@@ -295,3 +313,45 @@ class SubscriptionService:
 
         subscription = await self._subscription_repository.update(subscription_id, values)
         return _to_detail(subscription)
+
+    async def get_expiry_impact(
+        self, actor_role: str | None, subscription_id: uuid.UUID
+    ) -> list[AffectedSession]:
+        """Future SCHEDULED sessions that would be cancelled if this subscription
+        were expired now - used to render an informed confirmation before
+        expire_subscription is actually called."""
+        if actor_role != RoleName.SUPER_ADMIN:
+            raise ForbiddenError("Only Super Admins may preview subscription expiry impact.")
+
+        if await self._subscription_repository.get_by_id(subscription_id) is None:
+            raise SubscriptionNotFoundError(f"Subscription '{subscription_id}' was not found.")
+
+        sessions = await self._session_repository.list_scheduled_for_subscription_after(
+            subscription_id, datetime.now(timezone.utc)
+        )
+        return [AffectedSession(id=s.id, scheduled_start=s.scheduled_start) for s in sessions]
+
+    async def expire_subscription(
+        self, actor_role: str | None, subscription_id: uuid.UUID
+    ) -> ExpireSubscriptionResult:
+        """Marks the subscription EXPIRED and cancels its future SCHEDULED
+        sessions. Sessions are cancelled first, then the subscription is
+        expired - if the operation is interrupted partway, the client is left
+        with cancelled sessions and a subscription not yet marked EXPIRED
+        (recoverable by retrying), never the reverse (an EXPIRED subscription
+        with sessions dangling as if it still applied)."""
+        if actor_role != RoleName.SUPER_ADMIN:
+            raise ForbiddenError("Only Super Admins may expire subscriptions.")
+
+        if await self._subscription_repository.get_by_id(subscription_id) is None:
+            raise SubscriptionNotFoundError(f"Subscription '{subscription_id}' was not found.")
+
+        sessions_cancelled = await self._session_repository.cancel_scheduled_for_subscription_after(
+            subscription_id, datetime.now(timezone.utc)
+        )
+        subscription = await self._subscription_repository.update(
+            subscription_id, {"status": SubscriptionStatus.EXPIRED}
+        )
+        return ExpireSubscriptionResult(
+            subscription=_to_detail(subscription), sessions_cancelled=sessions_cancelled
+        )

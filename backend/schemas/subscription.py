@@ -60,6 +60,16 @@ class SubscriptionEligibilityResponse(BaseModel):
     can_schedule_sessions: bool
 
 
+class AffectedSessionResponse(BaseModel):
+    id: uuid.UUID
+    scheduled_start: datetime
+
+
+class SubscriptionExpireResponse(BaseModel):
+    subscription: SubscriptionResponse
+    sessions_cancelled: int
+
+
 class SubscriptionUpdateRequest(BaseModel):
     """Immutable fields (client_id, subscription_plan_id, plan_name, plan_price,
     plan_currency, plan_duration_days, start_date) are accepted here only so

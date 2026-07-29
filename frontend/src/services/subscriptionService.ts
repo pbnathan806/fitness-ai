@@ -1,11 +1,13 @@
 import { apiClient } from "@/services/apiClient"
 import type { PaginatedResponse } from "@/types/dashboard"
 import type {
+  AffectedSession,
   ClientSubscription,
   PaginatedSubscriptions,
   Subscription,
   SubscriptionCreateInput,
   SubscriptionEligibility,
+  SubscriptionExpireResult,
   SubscriptionUpdateInput,
 } from "@/types/subscription"
 
@@ -72,6 +74,19 @@ export const subscriptionService = {
 
   async getClientEligibility(clientId: string): Promise<SubscriptionEligibility> {
     const { data } = await apiClient.get<SubscriptionEligibility>(`/subscriptions/client/${clientId}/eligibility`)
+    return data
+  },
+
+  /** Preview of future SCHEDULED sessions that would be cancelled if this
+   * subscription were expired now - fetched before showing the confirm
+   * dialog, never as a side effect. */
+  async getExpiryImpact(subscriptionId: string): Promise<AffectedSession[]> {
+    const { data } = await apiClient.get<AffectedSession[]>(`/subscriptions/${subscriptionId}/expiry-impact`)
+    return data
+  },
+
+  async expireSubscription(subscriptionId: string): Promise<SubscriptionExpireResult> {
+    const { data } = await apiClient.post<SubscriptionExpireResult>(`/subscriptions/${subscriptionId}/expire`)
     return data
   },
 }

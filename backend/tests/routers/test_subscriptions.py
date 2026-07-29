@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -7,15 +7,18 @@ from core.constants import RoleName
 from core.deps import CurrentUser, get_current_user
 from main import app
 from models.client_trainer_assignment import ClientTrainerAssignment
+from models.session import SessionStatus
 from models.subscription import SubscriptionPaymentStatus, SubscriptionStatus
 from routers.subscriptions import (
     get_assignment_repository,
     get_client_repository,
+    get_session_repository,
     get_subscription_plan_repository,
     get_subscription_repository,
 )
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_client_service import FakeClientRepository, _make_client
+from tests.services.test_session_service import FakeSessionRepository, _make_session
 from tests.services.test_subscription_plan_service import (
     FakeSubscriptionPlanRepository,
     _make_plan,
@@ -30,6 +33,7 @@ def _override_dependencies(
     assignment_repository: FakeAssignmentRepository,
     user_id: uuid.UUID,
     active_role: str | None,
+    session_repository: FakeSessionRepository | None = None,
 ) -> None:
     app.dependency_overrides[get_subscription_repository] = lambda: subscription_repository
     app.dependency_overrides[get_subscription_plan_repository] = (
@@ -37,6 +41,9 @@ def _override_dependencies(
     )
     app.dependency_overrides[get_client_repository] = lambda: client_repository
     app.dependency_overrides[get_assignment_repository] = lambda: assignment_repository
+    app.dependency_overrides[get_session_repository] = lambda: (
+        session_repository or FakeSessionRepository()
+    )
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(
         user_id=user_id, active_role=active_role
     )
@@ -561,5 +568,148 @@ def test_update_subscription_returns_404_for_missing_subscription():
     response = test_client.patch(
         f"/api/v1/subscriptions/{uuid.uuid4()}", json={"status": "CANCELLED"}
     )
+
+    assert response.status_code == 404
+
+
+# --- GET /{id}/expiry-impact and POST /{id}/expire ----------------------------
+
+
+def _seed_stale_subscription():
+    subscription_repository, plan_repository, client_repository, assignment_repository = (
+        _make_repos()
+    )
+    session_repository = FakeSessionRepository()
+    client = _make_client(user_id=uuid.uuid4())
+    trainer = _make_trainer(user_id=uuid.uuid4())
+    client_repository.seed(client, "client@example.com")
+    plan = _make_plan()
+    plan_repository.seed(plan)
+    subscription = _make_subscription(
+        client.id, plan.id, status=SubscriptionStatus.ACTIVE, end_date=date.today() - timedelta(days=10)
+    )
+    subscription_repository.seed(subscription)
+
+    now = datetime.now(timezone.utc)
+    future_session = _make_session(
+        client.id,
+        trainer.id,
+        subscription_id=subscription.id,
+        status=SessionStatus.SCHEDULED,
+        scheduled_start=now + timedelta(days=3),
+        scheduled_end=now + timedelta(days=3, hours=1),
+    )
+    session_repository.seed(future_session)
+
+    return (
+        subscription,
+        future_session,
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        session_repository,
+    )
+
+
+def test_get_expiry_impact_returns_future_sessions():
+    subscription, future_session, subscription_repository, plan_repository, client_repository, assignment_repository, session_repository = (
+        _seed_stale_subscription()
+    )
+    _override_dependencies(
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+        session_repository=session_repository,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/subscriptions/{subscription.id}/expiry-impact")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["id"] == str(future_session.id)
+
+
+def test_get_expiry_impact_rejects_non_super_admin():
+    subscription_repository, plan_repository, client_repository, assignment_repository = (
+        _make_repos()
+    )
+    _override_dependencies(
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        uuid.uuid4(),
+        RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get(f"/api/v1/subscriptions/{uuid.uuid4()}/expiry-impact")
+
+    assert response.status_code == 403
+
+
+def test_expire_subscription_marks_expired_and_cancels_future_sessions():
+    subscription, future_session, subscription_repository, plan_repository, client_repository, assignment_repository, session_repository = (
+        _seed_stale_subscription()
+    )
+    _override_dependencies(
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+        session_repository=session_repository,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.post(f"/api/v1/subscriptions/{subscription.id}/expire")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["subscription"]["status"] == "EXPIRED"
+    assert body["sessions_cancelled"] == 1
+
+
+def test_expire_subscription_rejects_non_super_admin():
+    subscription_repository, plan_repository, client_repository, assignment_repository = (
+        _make_repos()
+    )
+    _override_dependencies(
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        uuid.uuid4(),
+        RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.post(f"/api/v1/subscriptions/{uuid.uuid4()}/expire")
+
+    assert response.status_code == 403
+
+
+def test_expire_subscription_returns_404_for_missing_subscription():
+    subscription_repository, plan_repository, client_repository, assignment_repository = (
+        _make_repos()
+    )
+    _override_dependencies(
+        subscription_repository,
+        plan_repository,
+        client_repository,
+        assignment_repository,
+        uuid.uuid4(),
+        RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.post(f"/api/v1/subscriptions/{uuid.uuid4()}/expire")
 
     assert response.status_code == 404

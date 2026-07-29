@@ -163,7 +163,10 @@ class SessionService:
         instead of inheriting usage from a prior, now-inactive subscription.
         """
         subscription = await self._subscription_repository.get_active_for_client(client_id)
-        if subscription is None:
+        # get_active_for_client only checks status == ACTIVE, not end_date - a
+        # subscription whose end_date has passed but was never manually marked
+        # EXPIRED must not be treated as a real entitlement here either.
+        if subscription is None or not can_schedule_sessions(subscription):
             return 0
 
         plan = await self._subscription_plan_repository.get_by_id(

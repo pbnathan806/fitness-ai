@@ -57,6 +57,16 @@ class SessionRepository(ABC):
     async def count_active_for_subscription(self, subscription_id: uuid.UUID) -> int: ...
 
     @abstractmethod
+    async def list_scheduled_for_subscription_after(
+        self, subscription_id: uuid.UUID, after: datetime
+    ) -> list[Session]: ...
+
+    @abstractmethod
+    async def cancel_scheduled_for_subscription_after(
+        self, subscription_id: uuid.UUID, after: datetime
+    ) -> int: ...
+
+    @abstractmethod
     async def count_in_range(
         self,
         start: datetime,
@@ -195,6 +205,35 @@ class SQLAlchemySessionRepository(SessionRepository):
             )
         )
         return result.scalar_one()
+
+    async def list_scheduled_for_subscription_after(
+        self, subscription_id: uuid.UUID, after: datetime
+    ) -> list[Session]:
+        result = await self._session.execute(
+            select(Session)
+            .where(
+                Session.subscription_id == subscription_id,
+                Session.status == SessionStatus.SCHEDULED,
+                Session.scheduled_start > after,
+            )
+            .order_by(Session.scheduled_start.asc())
+        )
+        return list(result.scalars().all())
+
+    async def cancel_scheduled_for_subscription_after(
+        self, subscription_id: uuid.UUID, after: datetime
+    ) -> int:
+        result = await self._session.execute(
+            update(Session)
+            .where(
+                Session.subscription_id == subscription_id,
+                Session.status == SessionStatus.SCHEDULED,
+                Session.scheduled_start > after,
+            )
+            .values(status=SessionStatus.CANCELLED)
+        )
+        await self._session.commit()
+        return result.rowcount
 
     async def count_in_range(
         self,

@@ -9,6 +9,7 @@ import { UpcomingSessionsWidget } from "@/app/pages/dashboard/components/Upcomin
 import { RecentActivityWidget } from "@/app/pages/dashboard/components/RecentActivityWidget"
 import { AlertsWidget } from "@/app/pages/dashboard/components/AlertsWidget"
 import { QuickActionsWidget } from "@/app/pages/dashboard/components/QuickActionsWidget"
+import { StaleSubscriptionsWidget } from "@/app/pages/dashboard/components/StaleSubscriptionsWidget"
 
 export function SuperAdminDashboardPage() {
   const statsQuery = useQuery({
@@ -116,6 +117,7 @@ export function SuperAdminDashboardPage() {
               measurementsQuery.refetch()
             }}
           />
+          <StaleSubscriptionsWidget clientNameById={clientNameById} />
         </div>
         <div className="space-y-4">
           <AlertsWidget
