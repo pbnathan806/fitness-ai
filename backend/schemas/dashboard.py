@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -21,9 +23,13 @@ class SuperAdminDashboardResponse(BaseModel):
     measurements_recorded_this_month: int
     pending_check_ins: int
     clients_missing_check_ins_today: int
+    pending_measurements: int
+    clients_missing_measurements: int
 
 
 class ClientDashboardResponse(BaseModel):
     completed_check_ins: int
     expected_check_ins: int
     adherence_percentage: int
+    latest_measurement_date: date | None
+    next_measurement_due_date: date | None

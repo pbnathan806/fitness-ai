@@ -1,6 +1,7 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from core.constants import RoleName
 from repositories.assignment_repository import AssignmentRepository
@@ -55,6 +56,8 @@ class SuperAdminDashboard:
     measurements_recorded_this_month: int
     pending_check_ins: int
     clients_missing_check_ins_today: int
+    pending_measurements: int
+    clients_missing_measurements: int
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,8 @@ class ClientDashboard:
     completed_check_ins: int
     expected_check_ins: int
     adherence_percentage: int
+    latest_measurement_date: date | None
+    next_measurement_due_date: date | None
 
 
 class DashboardService:
@@ -171,6 +176,9 @@ class DashboardService:
         subscription_expired_days = await self._application_setting_service.get_int(
             "subscription_expired_days"
         )
+        measurement_overdue_days = await self._application_setting_service.get_int(
+            "measurement_overdue_days"
+        )
 
         total_clients = await self._client_repository.count_all()
         total_trainers = await self._dashboard_repository.count_total_trainers()
@@ -200,6 +208,18 @@ class DashboardService:
             None, today_start, today_end, now
         )
 
+        # Clients with at least one measurement recorded; any client not
+        # among these keys has never been measured at all ("missing"), kept
+        # distinct from "pending" (measured before, but now overdue) so the
+        # two dashboard tiles never double-count the same client.
+        latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients()
+        clients_missing_measurements = total_clients - len(latest_measurements)
+        pending_measurements = sum(
+            1
+            for recorded_at in latest_measurements.values()
+            if is_measurement_overdue(recorded_at, today, measurement_overdue_days)
+        )
+
         return SuperAdminDashboard(
             total_clients=total_clients,
             active_clients=active_clients,
@@ -211,6 +231,8 @@ class DashboardService:
             measurements_recorded_this_month=measurements_recorded_this_month,
             pending_check_ins=pending_check_ins,
             clients_missing_check_ins_today=clients_missing_check_ins_today,
+            pending_measurements=pending_measurements,
+            clients_missing_measurements=clients_missing_measurements,
         )
 
     async def get_client_dashboard(
@@ -232,8 +254,28 @@ class DashboardService:
             round(completed_check_ins / expected_check_ins * 100) if expected_check_ins > 0 else 0
         )
 
+        measurement_overdue_days = await self._application_setting_service.get_int(
+            "measurement_overdue_days"
+        )
+        latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients(
+            [client.id]
+        )
+        latest_recorded_at = latest_measurements.get(client.id)
+        latest_measurement_date = (
+            latest_recorded_at.astimezone(ZoneInfo(client.timezone)).date()
+            if latest_recorded_at is not None
+            else None
+        )
+        next_measurement_due_date = (
+            latest_measurement_date + timedelta(days=measurement_overdue_days)
+            if latest_measurement_date is not None
+            else None
+        )
+
         return ClientDashboard(
             completed_check_ins=completed_check_ins,
             expected_check_ins=expected_check_ins,
             adherence_percentage=adherence_percentage,
+            latest_measurement_date=latest_measurement_date,
+            next_measurement_due_date=next_measurement_due_date,
         )

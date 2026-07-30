@@ -6,31 +6,71 @@ from fastapi.testclient import TestClient
 from core.constants import RoleName
 from core.deps import CurrentUser, get_current_user
 from main import app
+from models.application_setting import ApplicationSetting
 from models.client_trainer_assignment import ClientTrainerAssignment
+from repositories.measurement_repository import LatestMeasurementRow
 from routers.measurements import (
+    get_application_setting_repository,
     get_assignment_repository,
     get_client_repository,
     get_measurement_repository,
 )
+from tests.services.test_application_setting_service import FakeApplicationSettingRepository
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_client_service import FakeClientRepository, _make_client
 from tests.services.test_measurement_service import FakeMeasurementRepository, _make_measurement
 
 
-def _make_repos() -> tuple[FakeMeasurementRepository, FakeClientRepository, FakeAssignmentRepository]:
-    return FakeMeasurementRepository(), FakeClientRepository(), FakeAssignmentRepository()
+def _make_repos() -> tuple[
+    FakeMeasurementRepository,
+    FakeClientRepository,
+    FakeAssignmentRepository,
+    FakeApplicationSettingRepository,
+]:
+    application_setting_repository = FakeApplicationSettingRepository()
+    now = datetime.now(timezone.utc)
+    application_setting_repository.seed(
+        ApplicationSetting(
+            id=uuid.uuid4(),
+            key="measurement_overdue_days",
+            value="14",
+            description="Days after which measurements are overdue.",
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    application_setting_repository.seed(
+        ApplicationSetting(
+            id=uuid.uuid4(),
+            key="measurement_edit_window_days",
+            value="30",
+            description="Edit window",
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    return (
+        FakeMeasurementRepository(),
+        FakeClientRepository(),
+        FakeAssignmentRepository(),
+        application_setting_repository,
+    )
 
 
 def _override_dependencies(
     measurement_repository: FakeMeasurementRepository,
     client_repository: FakeClientRepository,
     assignment_repository: FakeAssignmentRepository,
+    application_setting_repository: FakeApplicationSettingRepository,
     user_id: uuid.UUID,
     active_role: str | None,
 ) -> None:
     app.dependency_overrides[get_measurement_repository] = lambda: measurement_repository
     app.dependency_overrides[get_client_repository] = lambda: client_repository
     app.dependency_overrides[get_assignment_repository] = lambda: assignment_repository
+    app.dependency_overrides[get_application_setting_repository] = (
+        lambda: application_setting_repository
+    )
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(
         user_id=user_id, active_role=active_role
     )
@@ -59,10 +99,12 @@ def _setup_assigned_pair(client_repository, assignment_repository):
 
 
 def test_create_measurement_with_weight_only_succeeds_for_super_admin():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -79,10 +121,12 @@ def test_create_measurement_with_weight_only_succeeds_for_super_admin():
 
 
 def test_create_measurement_with_multiple_fields_succeeds():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -105,10 +149,12 @@ def test_create_measurement_with_multiple_fields_succeeds():
 
 
 def test_create_measurement_rejects_empty_payload():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -122,12 +168,14 @@ def test_create_measurement_rejects_empty_payload():
 
 
 def test_create_measurement_succeeds_for_assigned_trainer():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         trainer_user_id, RoleName.TRAINER,
     )
     test_client = TestClient(app)
@@ -141,14 +189,16 @@ def test_create_measurement_succeeds_for_assigned_trainer():
 
 
 def test_create_measurement_rejects_unassigned_trainer():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         trainer_user_id, RoleName.TRAINER,
     )
     test_client = TestClient(app)
@@ -161,10 +211,12 @@ def test_create_measurement_rejects_unassigned_trainer():
 
 
 def test_create_measurement_rejects_client_role():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.CLIENT,
     )
     test_client = TestClient(app)
@@ -187,10 +239,12 @@ def test_create_measurement_requires_authentication():
 
 
 def test_create_measurement_rejects_naive_recorded_at():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -211,13 +265,15 @@ def test_create_measurement_rejects_naive_recorded_at():
 
 
 def test_client_can_view_own_measurements():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     client_repository.seed(client, "client@example.com")
     measurement_repository.seed(_make_measurement(client.id, uuid.uuid4()))
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         client_user_id, RoleName.CLIENT,
     )
     test_client = TestClient(app)
@@ -231,14 +287,16 @@ def test_client_can_view_own_measurements():
 
 
 def test_client_cannot_view_other_clients_measurements():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
     client_repository.seed(other_client, "other@example.com")
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         client_user_id, RoleName.CLIENT,
     )
     test_client = TestClient(app)
@@ -249,9 +307,11 @@ def test_client_cannot_view_other_clients_measurements():
 
 
 def test_get_client_measurements_returns_404_for_missing_client():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -265,7 +325,9 @@ def test_get_client_measurements_returns_404_for_missing_client():
 
 
 def test_latest_endpoint_computes_change_from_previous():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
     now = datetime.now(timezone.utc)
     measurement_repository.seed(
@@ -277,7 +339,7 @@ def test_latest_endpoint_computes_change_from_previous():
         _make_measurement(client.id, trainer.id, weight_kg=80, waist_cm=92, recorded_at=now)
     )
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -295,11 +357,13 @@ def test_latest_endpoint_computes_change_from_previous():
 
 
 def test_latest_endpoint_returns_null_change_without_previous():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
     measurement_repository.seed(_make_measurement(client.id, trainer.id, weight_kg=80))
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -314,10 +378,12 @@ def test_latest_endpoint_returns_null_change_without_previous():
 
 
 def test_latest_endpoint_returns_404_without_any_measurements():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -331,11 +397,13 @@ def test_latest_endpoint_returns_404_without_any_measurements():
 
 
 def test_get_measurement_by_id_succeeds_for_super_admin():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     measurement = _make_measurement(uuid.uuid4(), uuid.uuid4())
     measurement_repository.seed(measurement)
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -347,9 +415,11 @@ def test_get_measurement_by_id_succeeds_for_super_admin():
 
 
 def test_get_measurement_by_id_returns_404_for_missing_measurement():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -363,11 +433,13 @@ def test_get_measurement_by_id_returns_404_for_missing_measurement():
 
 
 def test_list_measurements_succeeds_for_super_admin():
-    measurement_repository, client_repository, assignment_repository = _make_repos()
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
     for _ in range(3):
         measurement_repository.seed(_make_measurement(uuid.uuid4(), uuid.uuid4()))
     _override_dependencies(
-        measurement_repository, client_repository, assignment_repository,
+        measurement_repository, client_repository, assignment_repository, setting_repository,
         uuid.uuid4(), RoleName.SUPER_ADMIN,
     )
     test_client = TestClient(app)
@@ -378,6 +450,170 @@ def test_list_measurements_succeeds_for_super_admin():
     body = response.json()
     assert body["total"] == 3
     assert len(body["items"]) == 2
+
+
+# --- PATCH /api/v1/measurements/{id} -------------------------------------------
+
+
+def test_update_measurement_succeeds_within_edit_window():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    measurement = _make_measurement(client.id, trainer.id, weight_kg=80)
+    measurement_repository.seed(measurement)
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        uuid.uuid4(), RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/measurements/{measurement.id}", json={"weight_kg": 78}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["weight_kg"] == 78
+
+
+def test_update_measurement_rejects_after_edit_window_expired():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    setting_repository.seed(
+        ApplicationSetting(
+            id=uuid.uuid4(),
+            key="measurement_edit_window_days",
+            value="1",
+            description="Edit window",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    measurement = _make_measurement(
+        client.id, trainer.id, weight_kg=80,
+        recorded_at=datetime.now(timezone.utc) - timedelta(days=5),
+    )
+    measurement_repository.seed(measurement)
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        uuid.uuid4(), RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/measurements/{measurement.id}", json={"weight_kg": 78}
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": (
+            "This measurement can no longer be modified. The configured edit window "
+            "has expired."
+        )
+    }
+
+
+def test_update_measurement_rejects_client_role():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
+    measurement = _make_measurement(client.id, trainer.id, weight_kg=80)
+    measurement_repository.seed(measurement)
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        uuid.uuid4(), RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/measurements/{measurement.id}", json={"weight_kg": 78}
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_measurement_returns_404_for_missing_measurement():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        uuid.uuid4(), RoleName.SUPER_ADMIN,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.patch(
+        f"/api/v1/measurements/{uuid.uuid4()}", json={"weight_kg": 78}
+    )
+
+    assert response.status_code == 404
+
+
+# --- GET /api/v1/measurements/pending -------------------------------------------
+
+
+def test_pending_measurements_allowed_for_trainer():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    client, trainer, trainer_user_id = _setup_assigned_pair(
+        client_repository, assignment_repository
+    )
+    measurement_repository.seed_latest_row(
+        LatestMeasurementRow(
+            client_id=client.id,
+            client_name=f"{client.first_name} {client.last_name}",
+            recorded_at=datetime.now(timezone.utc) - timedelta(days=20),
+        )
+    )
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        trainer_user_id, RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/v1/measurements/pending")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["client_id"] == str(client.id)
+    assert body[0]["days_overdue"] == 6
+
+
+def test_pending_measurements_returns_empty_list_when_none_pending():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    _, _, trainer_user_id = _setup_assigned_pair(client_repository, assignment_repository)
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        trainer_user_id, RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/v1/measurements/pending")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_pending_measurements_rejects_client_role():
+    measurement_repository, client_repository, assignment_repository, setting_repository = (
+        _make_repos()
+    )
+    _override_dependencies(
+        measurement_repository, client_repository, assignment_repository, setting_repository,
+        uuid.uuid4(), RoleName.CLIENT,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/v1/measurements/pending")
+
+    assert response.status_code == 403
 
 
 # --- Existing functionality remains unaffected --------------------------------

@@ -1,7 +1,8 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { ChevronLeft, Pencil, UserCog, CreditCard, CalendarClock, Ruler, ClipboardCheck } from "lucide-react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { ChevronLeft, Pencil, Plus, UserCog, CreditCard, CalendarClock, Ruler, ClipboardCheck } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner"
 import { ClientDetailsCard } from "@/app/pages/clients/components/ClientDetailsCard"
 import { TrainerAssignmentCard } from "@/app/pages/clients/components/TrainerAssignmentCard"
 import { SubscriptionEligibilityBadge } from "@/components/common/SubscriptionEligibilityBadge"
+import { MeasurementForm } from "@/app/pages/measurements/components/MeasurementForm"
 import { clientService } from "@/services/clientService"
 import { assignmentService } from "@/services/assignmentService"
 import { subscriptionService } from "@/services/subscriptionService"
@@ -21,9 +23,12 @@ import { dashboardService } from "@/services/dashboardService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate, formatDateTime } from "@/lib/format"
 import { SUBSCRIPTION_STATUS_BADGE_VARIANT, SUBSCRIPTION_STATUS_LABELS } from "@/lib/subscriptionStatus"
+import type { MeasurementCreateInput, MeasurementUpdateInput } from "@/types/measurement"
 
 export function ClientDetailsPage() {
   const { id } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
+  const [isAddingMeasurement, setIsAddingMeasurement] = useState(false)
 
   const clientQuery = useQuery({
     queryKey: ["clients", id],
@@ -56,6 +61,16 @@ export function ClientDetailsPage() {
     queryKey: ["check-ins", "client", id],
     queryFn: () => checkInService.getClientCheckIns(id!),
     enabled: !!id,
+  })
+
+  const createMeasurementMutation = useMutation({
+    mutationFn: (values: MeasurementUpdateInput) =>
+      measurementService.create({ client_id: id!, recorded_at: null, ...values } as MeasurementCreateInput),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["measurements", "latest", id] })
+      setIsAddingMeasurement(false)
+      toast.success("Measurement recorded.")
+    },
   })
 
   const clientAssignments = useMemo(
@@ -210,40 +225,68 @@ export function ClientDetailsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Ruler className="size-4 text-muted-foreground" aria-hidden="true" />
-              Latest Measurements
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <Ruler className="size-4 text-muted-foreground" aria-hidden="true" />
+                Latest Measurements
+              </CardTitle>
+              {!isAddingMeasurement && (
+                <Button size="sm" onClick={() => setIsAddingMeasurement(true)}>
+                  <Plus className="size-4" />
+                  Add Measurement
+                </Button>
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
-            {measurementQuery.isLoading && <Skeleton className="h-16 w-full" />}
-            {!measurementQuery.isLoading && measurementQuery.isError && (
-              <ErrorState message="Unable to load measurements." onRetry={() => measurementQuery.refetch()} />
+          <CardContent className="space-y-4">
+            {!isAddingMeasurement && (
+              <>
+                {measurementQuery.isLoading && <Skeleton className="h-16 w-full" />}
+                {!measurementQuery.isLoading && measurementQuery.isError && (
+                  <ErrorState message="Unable to load measurements." onRetry={() => measurementQuery.refetch()} />
+                )}
+                {!measurementQuery.isLoading && !measurementQuery.isError && !measurementQuery.data && (
+                  <EmptyState icon={Ruler} message="No measurements available." />
+                )}
+                {measurementQuery.data && (
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Date</p>
+                      <p className="text-sm font-medium">
+                        {measurementQuery.data.recorded_at ? formatDate(measurementQuery.data.recorded_at) : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Weight</p>
+                      <p className="text-sm font-medium">
+                        {measurementQuery.data.weight_kg != null ? `${measurementQuery.data.weight_kg} kg` : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Waist</p>
+                      <p className="text-sm font-medium">
+                        {measurementQuery.data.waist_cm != null ? `${measurementQuery.data.waist_cm} cm` : "N/A"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-            {!measurementQuery.isLoading && !measurementQuery.isError && !measurementQuery.data && (
-              <EmptyState icon={Ruler} message="No measurements available." />
-            )}
-            {measurementQuery.data && (
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Date</p>
-                  <p className="text-sm font-medium">
-                    {measurementQuery.data.recorded_at ? formatDate(measurementQuery.data.recorded_at) : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Weight</p>
-                  <p className="text-sm font-medium">
-                    {measurementQuery.data.weight_kg != null ? `${measurementQuery.data.weight_kg} kg` : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Waist</p>
-                  <p className="text-sm font-medium">
-                    {measurementQuery.data.waist_cm != null ? `${measurementQuery.data.waist_cm} cm` : "N/A"}
-                  </p>
-                </div>
-              </div>
+
+            {isAddingMeasurement && (
+              <>
+                <MeasurementForm
+                  onSubmit={(values) => createMeasurementMutation.mutate(values)}
+                  isSubmitting={createMeasurementMutation.isPending}
+                  submitErrorMessage={
+                    createMeasurementMutation.isError ? getApiErrorMessage(createMeasurementMutation.error) : null
+                  }
+                  submitLabel="Save Measurement"
+                />
+                <Button variant="ghost" size="sm" onClick={() => setIsAddingMeasurement(false)}>
+                  Cancel
+                </Button>
+              </>
             )}
           </CardContent>
         </Card>

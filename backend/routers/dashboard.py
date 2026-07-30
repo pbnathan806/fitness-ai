@@ -140,6 +140,8 @@ def _to_super_admin_response(detail: SuperAdminDashboard) -> SuperAdminDashboard
         measurements_recorded_this_month=detail.measurements_recorded_this_month,
         pending_check_ins=detail.pending_check_ins,
         clients_missing_check_ins_today=detail.clients_missing_check_ins_today,
+        pending_measurements=detail.pending_measurements,
+        clients_missing_measurements=detail.clients_missing_measurements,
     )
 
 
@@ -148,6 +150,8 @@ def _to_client_response(detail: ClientDashboard) -> ClientDashboardResponse:
         completed_check_ins=detail.completed_check_ins,
         expected_check_ins=detail.expected_check_ins,
         adherence_percentage=detail.adherence_percentage,
+        latest_measurement_date=detail.latest_measurement_date,
+        next_measurement_due_date=detail.next_measurement_due_date,
     )
 
 

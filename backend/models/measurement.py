@@ -11,14 +11,14 @@ from database.base import Base
 class Measurement(Base):
     """A single point-in-time client body-measurement snapshot (Task-18).
 
-    Measurements are immutable: once recorded, a row is never updated or
-    deleted, so a client's measurement history always reflects exactly what
-    was recorded at each check-in. There is intentionally no repository
-    update()/delete() method for this model. Every body-measurement field is
-    optional (fitness assessments are often partial) but at least one must be
-    populated - enforced in the service layer via
-    utils.measurement.at_least_one_measurement_required, not as a DB
-    constraint.
+    Measurements are never deleted, so a client's measurement history is
+    always preserved. A SUPER_ADMIN, or a TRAINER assigned to the client, may
+    edit one until measurement_edit_window_days after recorded_at (enforced
+    in the service layer, not as a DB constraint); CLIENT is always
+    read-only. Every body-measurement field is optional (fitness assessments
+    are often partial) but at least one must be populated - enforced in the
+    service layer via utils.measurement.at_least_one_measurement_required,
+    not as a DB constraint.
     """
 
     __tablename__ = "measurements"
@@ -52,11 +52,11 @@ class Measurement(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    # No onupdate=func.now(): measurements are never updated after creation,
-    # so this always equals created_at (kept as a distinct column only to
-    # match the audit-timestamp convention shared by every other model).
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     client: Mapped["Client"] = relationship(  # noqa: F821

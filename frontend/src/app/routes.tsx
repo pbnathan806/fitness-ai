@@ -21,6 +21,8 @@ import { TrainerEditPage } from "@/app/pages/trainers/TrainerEditPage"
 import { TrainerDetailsPage } from "@/app/pages/trainers/TrainerDetailsPage"
 import { TrainerProfilePage } from "@/app/pages/trainer/TrainerProfilePage"
 import { TrainerAvailabilityPage } from "@/app/pages/trainer/TrainerAvailabilityPage"
+import { TrainerPendingMeasurementsPage } from "@/app/pages/trainer/TrainerPendingMeasurementsPage"
+import { TrainerClientMeasurementsPage } from "@/app/pages/trainer/TrainerClientMeasurementsPage"
 import { SubscriptionPlansListPage } from "@/app/pages/subscriptionPlans/SubscriptionPlansListPage"
 import { SubscriptionPlanCreatePage } from "@/app/pages/subscriptionPlans/SubscriptionPlanCreatePage"
 import { SubscriptionPlanEditPage } from "@/app/pages/subscriptionPlans/SubscriptionPlanEditPage"
@@ -28,6 +30,7 @@ import { SubscriptionsListPage } from "@/app/pages/subscriptions/SubscriptionsLi
 import { SubscriptionCreatePage } from "@/app/pages/subscriptions/SubscriptionCreatePage"
 import { SubscriptionDetailsPage } from "@/app/pages/subscriptions/SubscriptionDetailsPage"
 import { ClientSubscriptionsPage } from "@/app/pages/client/ClientSubscriptionsPage"
+import { ClientMeasurementsPage } from "@/app/pages/client/ClientMeasurementsPage"
 import { SessionsListPage } from "@/app/pages/sessions/SessionsListPage"
 import { SessionCreatePage } from "@/app/pages/sessions/SessionCreatePage"
 import { SessionBulkCreatePage } from "@/app/pages/sessions/SessionBulkCreatePage"
@@ -39,6 +42,7 @@ import { ClientMySessionsListPage } from "@/app/pages/client/ClientMySessionsLis
 import { ClientMySessionDetailsPage } from "@/app/pages/client/ClientMySessionDetailsPage"
 import { ApplicationSettingsPage } from "@/app/pages/applicationSettings/ApplicationSettingsPage"
 import { SuperAdminCheckInsPage } from "@/app/pages/checkIns/SuperAdminCheckInsPage"
+import { SuperAdminMeasurementsPage } from "@/app/pages/measurements/SuperAdminMeasurementsPage"
 import { Role, type RoleName } from "@/lib/constants"
 import { NAV_ITEMS } from "@/lib/navigation"
 import type { ReactNode } from "react"
@@ -99,6 +103,9 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
     "Check-ins": {
       children: [{ index: true, element: <SuperAdminCheckInsPage /> }],
     },
+    Measurements: {
+      children: [{ index: true, element: <SuperAdminMeasurementsPage /> }],
+    },
     Settings: {
       children: [{ index: true, element: <ApplicationSettingsPage /> }],
     },
@@ -113,6 +120,9 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
     Profile: {
       children: [{ index: true, element: <TrainerProfilePage /> }],
     },
+    Measurements: {
+      children: [{ index: true, element: <TrainerPendingMeasurementsPage /> }],
+    },
     Availability: {
       children: [{ index: true, element: <TrainerAvailabilityPage /> }],
     },
@@ -126,6 +136,9 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { index: true, element: <ClientMySessionsListPage /> },
         { path: ":id", element: <ClientMySessionDetailsPage /> },
       ],
+    },
+    Measurements: {
+      children: [{ index: true, element: <ClientMeasurementsPage /> }],
     },
   },
 }
@@ -187,6 +200,10 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="dashboard" replace /> },
               ...roleSectionChildren(Role.TRAINER),
+              // Not a NAV_ITEMS entry (no sidebar link) - reached by clicking a
+              // client row on the Pending Measurements page. "Assigned Clients"
+              // (NAV_ITEMS) still owns the bare /trainer/clients index route.
+              { path: "clients/:id", element: <TrainerClientMeasurementsPage /> },
             ],
           },
         ],

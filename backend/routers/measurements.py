@@ -5,6 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import CurrentUser, get_current_user
 from database.session import get_db
+from repositories.application_setting_repository import (
+    ApplicationSettingRepository,
+    SQLAlchemyApplicationSettingRepository,
+)
 from repositories.assignment_repository import (
     AssignmentRepository,
     SQLAlchemyAssignmentRepository,
@@ -18,15 +22,20 @@ from schemas.measurement import (
     LatestMeasurementResponse,
     MeasurementCreateRequest,
     MeasurementResponse,
+    MeasurementUpdateRequest,
     PaginatedMeasurementsResponse,
+    PendingMeasurementResponse,
 )
+from services.application_setting_service import ApplicationSettingService
 from services.measurement_service import (
     ClientNotFoundError,
     ForbiddenError,
     MeasurementDetail,
+    MeasurementEditWindowExpiredError,
     MeasurementFieldsRequiredError,
     MeasurementNotFoundError,
     MeasurementService,
+    PendingMeasurementDetail,
     TrainerNotAssignedError,
     TrainerNotFoundError,
 )
@@ -50,12 +59,34 @@ def get_assignment_repository(
     return SQLAlchemyAssignmentRepository(session)
 
 
+def get_application_setting_repository(
+    session: AsyncSession = Depends(get_db),
+) -> ApplicationSettingRepository:
+    return SQLAlchemyApplicationSettingRepository(session)
+
+
+def get_application_setting_service(
+    application_setting_repository: ApplicationSettingRepository = Depends(
+        get_application_setting_repository
+    ),
+) -> ApplicationSettingService:
+    return ApplicationSettingService(application_setting_repository)
+
+
 def get_measurement_service(
     measurement_repository: MeasurementRepository = Depends(get_measurement_repository),
     client_repository: ClientRepository = Depends(get_client_repository),
     assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
+    application_setting_service: ApplicationSettingService = Depends(
+        get_application_setting_service
+    ),
 ) -> MeasurementService:
-    return MeasurementService(measurement_repository, client_repository, assignment_repository)
+    return MeasurementService(
+        measurement_repository,
+        client_repository,
+        assignment_repository,
+        application_setting_service,
+    )
 
 
 def _to_response(detail: MeasurementDetail) -> MeasurementResponse:
@@ -76,6 +107,15 @@ def _to_response(detail: MeasurementDetail) -> MeasurementResponse:
         recorded_at=detail.recorded_at,
         created_at=detail.created_at,
         updated_at=detail.updated_at,
+    )
+
+
+def _to_pending_response(detail: PendingMeasurementDetail) -> PendingMeasurementResponse:
+    return PendingMeasurementResponse(
+        client_id=detail.client_id,
+        client_name=detail.client_name,
+        last_measurement_date=detail.last_measurement_date,
+        days_overdue=detail.days_overdue,
     )
 
 
@@ -146,6 +186,26 @@ async def list_measurements(
 
 
 @router.get(
+    "/pending", response_model=list[PendingMeasurementResponse], status_code=status.HTTP_200_OK
+)
+async def list_pending_measurements(
+    current_user: CurrentUser = Depends(get_current_user),
+    measurement_service: MeasurementService = Depends(get_measurement_service),
+) -> list[PendingMeasurementResponse]:
+    try:
+        items = await measurement_service.list_pending_measurements(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except TrainerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return [_to_pending_response(item) for item in items]
+
+
+@router.get(
     "/client/{client_id}/latest",
     response_model=LatestMeasurementResponse,
     status_code=status.HTTP_200_OK,
@@ -209,5 +269,35 @@ async def get_measurement(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except MeasurementNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_response(detail)
+
+
+@router.patch("/{measurement_id}", response_model=MeasurementResponse, status_code=status.HTTP_200_OK)
+async def update_measurement(
+    measurement_id: uuid.UUID,
+    payload: MeasurementUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    measurement_service: MeasurementService = Depends(get_measurement_service),
+) -> MeasurementResponse:
+    try:
+        detail = await measurement_service.update_measurement(
+            actor_role=current_user.active_role,
+            actor_id=current_user.user_id,
+            measurement_id=measurement_id,
+            values=payload.model_dump(exclude_unset=True),
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except MeasurementNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TrainerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TrainerNotAssignedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except MeasurementFieldsRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except MeasurementEditWindowExpiredError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return _to_response(detail)

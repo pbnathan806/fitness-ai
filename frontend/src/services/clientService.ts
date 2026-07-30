@@ -37,6 +37,14 @@ export const clientService = {
     return data
   },
 
+  /** Resolves the current user's own client profile - used by CLIENT-facing
+   * "My ..." pages that need their own client id (e.g. Measurements), where
+   * no client-id-scoped "my-X" endpoint exists on that resource itself. */
+  async getMe(): Promise<Client> {
+    const { data } = await apiClient.get<Client>("/clients/me")
+    return data
+  },
+
   async createClient(payload: ClientCreateInput): Promise<Client> {
     const { data } = await apiClient.post<Client>("/clients", payload)
     return data

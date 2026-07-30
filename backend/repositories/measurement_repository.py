@@ -1,23 +1,39 @@
 import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from models.client import Client
 from models.measurement import Measurement
+
+
+@dataclass(frozen=True)
+class LatestMeasurementRow:
+    """A client's most recent Measurement, joined with the client's name."""
+
+    client_id: uuid.UUID
+    client_name: str
+    recorded_at: datetime
 
 
 class MeasurementRepository(ABC):
     """Abstraction over measurement persistence, decoupling callers from SQLAlchemy.
 
-    Deliberately has no update()/delete() method: measurements are immutable
-    and historical records are always preserved.
+    Measurements are editable during the configured edit window (see
+    ApplicationSetting measurement_edit_window_days), so update() is
+    supported. There is intentionally no delete(): historical records are
+    always preserved once recorded.
     """
 
     @abstractmethod
     async def create(self, measurement: Measurement) -> Measurement: ...
+
+    @abstractmethod
+    async def update(self, measurement: Measurement) -> Measurement: ...
 
     @abstractmethod
     async def get_by_id(self, measurement_id: uuid.UUID) -> Measurement | None: ...
@@ -43,8 +59,13 @@ class MeasurementRepository(ABC):
 
     @abstractmethod
     async def get_latest_recorded_at_for_clients(
-        self, client_ids: list[uuid.UUID]
+        self, client_ids: list[uuid.UUID] | None = None
     ) -> dict[uuid.UUID, datetime]: ...
+
+    @abstractmethod
+    async def list_latest_for_clients(
+        self, client_ids: list[uuid.UUID] | None
+    ) -> list[LatestMeasurementRow]: ...
 
 
 class SQLAlchemyMeasurementRepository(MeasurementRepository):
@@ -53,6 +74,11 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
 
     async def create(self, measurement: Measurement) -> Measurement:
         self._session.add(measurement)
+        await self._session.commit()
+        await self._session.refresh(measurement)
+        return measurement
+
+    async def update(self, measurement: Measurement) -> Measurement:
         await self._session.commit()
         await self._session.refresh(measurement)
         return measurement
@@ -135,9 +161,9 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
         return result.scalar_one()
 
     async def get_latest_recorded_at_for_clients(
-        self, client_ids: list[uuid.UUID]
+        self, client_ids: list[uuid.UUID] | None = None
     ) -> dict[uuid.UUID, datetime]:
-        if not client_ids:
+        if client_ids is not None and not client_ids:
             return {}
 
         row_number = (
@@ -148,12 +174,46 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
             )
             .label("rn")
         )
-        ranked = (
-            select(Measurement.client_id, Measurement.recorded_at, row_number)
-            .where(Measurement.client_id.in_(client_ids))
-            .subquery()
-        )
+        query = select(Measurement.client_id, Measurement.recorded_at, row_number)
+        if client_ids is not None:
+            query = query.where(Measurement.client_id.in_(client_ids))
+        ranked = query.subquery()
+
         result = await self._session.execute(
             select(ranked.c.client_id, ranked.c.recorded_at).where(ranked.c.rn == 1)
         )
         return {row.client_id: row.recorded_at for row in result}
+
+    async def list_latest_for_clients(
+        self, client_ids: list[uuid.UUID] | None
+    ) -> list[LatestMeasurementRow]:
+        if client_ids is not None and not client_ids:
+            return []
+
+        row_number = (
+            func.row_number()
+            .over(
+                partition_by=Measurement.client_id,
+                order_by=Measurement.recorded_at.desc(),
+            )
+            .label("rn")
+        )
+        query = select(Measurement.client_id, Measurement.recorded_at, row_number)
+        if client_ids is not None:
+            query = query.where(Measurement.client_id.in_(client_ids))
+        ranked = query.subquery()
+
+        result = await self._session.execute(
+            select(ranked.c.client_id, Client.first_name, Client.last_name, ranked.c.recorded_at)
+            .join(Client, Client.id == ranked.c.client_id)
+            .where(ranked.c.rn == 1)
+            .order_by(ranked.c.recorded_at.asc())
+        )
+        return [
+            LatestMeasurementRow(
+                client_id=client_id,
+                client_name=f"{first_name} {last_name}",
+                recorded_at=recorded_at,
+            )
+            for client_id, first_name, last_name, recorded_at in result.all()
+        ]

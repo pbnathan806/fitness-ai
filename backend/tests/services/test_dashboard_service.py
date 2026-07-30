@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -319,6 +320,10 @@ def test_super_admin_dashboard_computes_all_fields():
     assert dashboard.measurements_recorded_this_month == 1
     assert dashboard.pending_check_ins == 1
     assert dashboard.clients_missing_check_ins_today == 1
+    # client_a: measured recently -> not pending. client_b: never measured
+    # -> counted under "missing", not double-counted as "pending".
+    assert dashboard.pending_measurements == 0
+    assert dashboard.clients_missing_measurements == 1
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +335,7 @@ def _build_client_fixture():
     client_repository = FakeClientRepository()
     session_repository = FakeSessionRepository()
     check_in_repository = FakeCheckInRepository()
+    measurement_repository = FakeMeasurementRepository()
     subscription_repository = FakeSubscriptionRepository()
 
     user_id = uuid.uuid4()
@@ -342,6 +348,7 @@ def _build_client_fixture():
         "client_repository": client_repository,
         "session_repository": session_repository,
         "check_in_repository": check_in_repository,
+        "measurement_repository": measurement_repository,
         "subscription_repository": subscription_repository,
         "client": client,
         "trainer_id": trainer_id,
@@ -386,6 +393,7 @@ def test_client_dashboard_counts_completed_and_expected_check_ins():
         client_repository=fixture["client_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
+        measurement_repository=fixture["measurement_repository"],
         subscription_repository=fixture["subscription_repository"],
     )
 
@@ -404,6 +412,7 @@ def test_client_dashboard_adherence_zero_when_no_expected_sessions():
         client_repository=fixture["client_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
+        measurement_repository=fixture["measurement_repository"],
         subscription_repository=fixture["subscription_repository"],
     )
 
@@ -414,3 +423,30 @@ def test_client_dashboard_adherence_zero_when_no_expected_sessions():
     assert dashboard.completed_check_ins == 0
     assert dashboard.expected_check_ins == 0
     assert dashboard.adherence_percentage == 0
+    assert dashboard.latest_measurement_date is None
+    assert dashboard.next_measurement_due_date is None
+
+
+def test_client_dashboard_computes_measurement_due_date():
+    fixture = _build_client_fixture()
+    client = fixture["client"]
+    recorded_at = datetime.now(timezone.utc) - timedelta(days=5)
+    fixture["measurement_repository"].seed(
+        _make_measurement(client.id, uuid.uuid4(), recorded_at=recorded_at)
+    )
+    service = _make_service(
+        client_repository=fixture["client_repository"],
+        session_repository=fixture["session_repository"],
+        check_in_repository=fixture["check_in_repository"],
+        measurement_repository=fixture["measurement_repository"],
+        subscription_repository=fixture["subscription_repository"],
+        application_setting_service=_application_setting_service(measurement_overdue_days=14),
+    )
+
+    dashboard = asyncio.run(
+        service.get_client_dashboard(actor_role=RoleName.CLIENT, actor_id=fixture["user_id"])
+    )
+
+    expected_latest = recorded_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
+    assert dashboard.latest_measurement_date == expected_latest
+    assert dashboard.next_measurement_due_date == expected_latest + timedelta(days=14)

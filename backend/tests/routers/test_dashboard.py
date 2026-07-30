@@ -173,6 +173,8 @@ def test_super_admin_dashboard_succeeds_for_super_admin():
     assert body["active_clients"] == 1
     assert body["expired_clients"] == 1
     assert body["total_trainers"] == 1
+    assert body["pending_measurements"] == 0
+    assert body["clients_missing_measurements"] == 1
 
 
 def test_client_dashboard_requires_authentication():
@@ -212,6 +214,7 @@ def test_client_dashboard_succeeds_for_client():
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
         subscription_repository=fixture["subscription_repository"],
+        application_setting_repository=_seeded_application_setting_repository(),
     )
     test_client = TestClient(app)
 
@@ -222,3 +225,39 @@ def test_client_dashboard_succeeds_for_client():
     assert body["completed_check_ins"] == 0
     assert body["expected_check_ins"] == 0
     assert body["adherence_percentage"] == 0
+    assert body["latest_measurement_date"] is None
+    assert body["next_measurement_due_date"] is None
+
+
+def test_client_dashboard_computes_measurement_due_date():
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    from tests.services.test_dashboard_service import _build_client_fixture
+    from tests.services.test_measurement_service import _make_measurement
+
+    fixture = _build_client_fixture()
+    client = fixture["client"]
+    recorded_at = datetime.now(timezone.utc) - timedelta(days=5)
+    fixture["measurement_repository"].seed(
+        _make_measurement(client.id, uuid.uuid4(), recorded_at=recorded_at)
+    )
+    _override_dependencies(
+        fixture["user_id"],
+        RoleName.CLIENT,
+        client_repository=fixture["client_repository"],
+        session_repository=fixture["session_repository"],
+        check_in_repository=fixture["check_in_repository"],
+        measurement_repository=fixture["measurement_repository"],
+        subscription_repository=fixture["subscription_repository"],
+        application_setting_repository=_seeded_application_setting_repository(),
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/v1/dashboard/client")
+
+    assert response.status_code == 200
+    body = response.json()
+    expected_latest = recorded_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
+    assert body["latest_measurement_date"] == expected_latest.isoformat()
+    assert body["next_measurement_due_date"] == (expected_latest + timedelta(days=14)).isoformat()

@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from core.constants import RoleName
@@ -8,7 +8,10 @@ from models.measurement import Measurement
 from repositories.assignment_repository import AssignmentRepository
 from repositories.client_repository import ClientRepository
 from repositories.measurement_repository import MeasurementRepository
-from utils.measurement import at_least_one_measurement_required
+from services.application_setting_service import ApplicationSettingService
+from utils.dashboard import is_measurement_overdue
+from utils.measurement import at_least_one_measurement_required, MEASUREMENT_FIELDS
+from utils.subscription import current_india_date
 
 
 class ForbiddenError(Exception):
@@ -33,6 +36,10 @@ class MeasurementFieldsRequiredError(Exception):
 
 class MeasurementNotFoundError(Exception):
     """Raised when no measurement exists for the requested identifier."""
+
+
+class MeasurementEditWindowExpiredError(Exception):
+    """Raised when a measurement edit is attempted after the configured edit window."""
 
 
 @dataclass(frozen=True)
@@ -96,6 +103,14 @@ class LatestMeasurementDetail:
     previous_resting_heart_rate: int | None
     resting_heart_rate_change: int | None
     recorded_at: date | None
+
+
+@dataclass(frozen=True)
+class PendingMeasurementDetail:
+    client_id: uuid.UUID
+    client_name: str
+    last_measurement_date: date
+    days_overdue: int
 
 
 def _to_detail(measurement: Measurement) -> MeasurementDetail:
@@ -173,9 +188,11 @@ def _to_latest_detail(
 class MeasurementService:
     """Business logic for client body measurements and their RBAC rules (Task-18).
 
-    Measurements are immutable point-in-time snapshots: a SUPER_ADMIN or
-    assigned TRAINER records one, nothing about it is ever edited or removed,
-    and CLIENT is strictly read-only over their own history.
+    Measurements are client-centric point-in-time snapshots, never tied to a
+    Session or Subscription: a SUPER_ADMIN or assigned TRAINER records one
+    and may edit it until measurement_edit_window_days after recorded_at
+    (Measurements V1.1), and CLIENT is strictly read-only over their own
+    history.
     """
 
     def __init__(
@@ -183,10 +200,12 @@ class MeasurementService:
         measurement_repository: MeasurementRepository,
         client_repository: ClientRepository,
         assignment_repository: AssignmentRepository,
+        application_setting_service: ApplicationSettingService,
     ) -> None:
         self._measurement_repository = measurement_repository
         self._client_repository = client_repository
         self._assignment_repository = assignment_repository
+        self._application_setting_service = application_setting_service
 
     async def _authorize_view(
         self, actor_role: str | None, actor_id: uuid.UUID, client_id: uuid.UUID
@@ -264,6 +283,55 @@ class MeasurementService:
         )
         return _to_detail(measurement)
 
+    async def update_measurement(
+        self,
+        actor_role: str | None,
+        actor_id: uuid.UUID,
+        measurement_id: uuid.UUID,
+        values: dict,
+    ) -> MeasurementDetail:
+        measurement = await self._measurement_repository.get_by_id(measurement_id)
+        if measurement is None:
+            raise MeasurementNotFoundError(f"Measurement '{measurement_id}' was not found.")
+
+        if actor_role == RoleName.SUPER_ADMIN:
+            pass
+        elif actor_role == RoleName.TRAINER:
+            trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
+            if trainer_id is None:
+                raise TrainerNotFoundError("No trainer profile exists for the current user.")
+            if not await self._assignment_repository.exists_for_pair(
+                measurement.client_id, trainer_id
+            ):
+                raise TrainerNotAssignedError(
+                    f"Trainer is not assigned to client '{measurement.client_id}'."
+                )
+        else:
+            raise ForbiddenError("Only Trainers and Super Admins may edit measurements.")
+
+        edit_window_days = await self._application_setting_service.get_int(
+            "measurement_edit_window_days"
+        )
+        deadline = measurement.recorded_at + timedelta(days=edit_window_days)
+        if datetime.now(timezone.utc) > deadline:
+            raise MeasurementEditWindowExpiredError(
+                "This measurement can no longer be modified. The configured edit window "
+                "has expired."
+            )
+
+        current_values = {field: getattr(measurement, field) for field in MEASUREMENT_FIELDS}
+        merged_values = {**current_values, **values}
+        if not at_least_one_measurement_required(merged_values):
+            raise MeasurementFieldsRequiredError(
+                "At least one measurement field must be provided."
+            )
+
+        for field, value in values.items():
+            setattr(measurement, field, value)
+
+        updated = await self._measurement_repository.update(measurement)
+        return _to_detail(updated)
+
     async def list_measurements(
         self, actor_role: str | None, actor_id: uuid.UUID, page: int, page_size: int
     ) -> PaginatedMeasurements:
@@ -338,3 +406,41 @@ class MeasurementService:
         latest = measurements[0]
         previous = measurements[1] if len(measurements) > 1 else None
         return _to_latest_detail(latest, previous, client_record.client.timezone)
+
+    async def list_pending_measurements(
+        self, actor_role: str | None, actor_id: uuid.UUID
+    ) -> list[PendingMeasurementDetail]:
+        if actor_role == RoleName.SUPER_ADMIN:
+            client_ids = None
+        elif actor_role == RoleName.TRAINER:
+            trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
+            if trainer_id is None:
+                raise TrainerNotFoundError("No trainer profile exists for the current user.")
+            assigned_clients = await self._assignment_repository.list_clients_for_trainer(
+                trainer_id
+            )
+            client_ids = [record.client.id for record in assigned_clients]
+        else:
+            raise ForbiddenError("Not authorized to view pending measurements.")
+
+        measurement_overdue_days = await self._application_setting_service.get_int(
+            "measurement_overdue_days"
+        )
+        today = current_india_date()
+        rows = await self._measurement_repository.list_latest_for_clients(client_ids)
+
+        pending = []
+        for row in rows:
+            if not is_measurement_overdue(row.recorded_at, today, measurement_overdue_days):
+                continue
+            last_measurement_date = row.recorded_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
+            due_date = last_measurement_date + timedelta(days=measurement_overdue_days)
+            pending.append(
+                PendingMeasurementDetail(
+                    client_id=row.client_id,
+                    client_name=row.client_name,
+                    last_measurement_date=last_measurement_date,
+                    days_overdue=(today - due_date).days,
+                )
+            )
+        return pending

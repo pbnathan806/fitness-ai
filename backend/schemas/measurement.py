@@ -28,6 +28,19 @@ class MeasurementCreateRequest(BaseModel):
         return value
 
 
+class MeasurementUpdateRequest(BaseModel):
+    weight_kg: float | None = None
+    body_fat_percentage: float | None = None
+    chest_cm: float | None = None
+    waist_cm: float | None = None
+    hips_cm: float | None = None
+    left_arm_cm: float | None = None
+    right_arm_cm: float | None = None
+    left_thigh_cm: float | None = None
+    right_thigh_cm: float | None = None
+    resting_heart_rate: int | None = None
+
+
 class MeasurementResponse(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
@@ -87,3 +100,10 @@ class LatestMeasurementResponse(BaseModel):
     previous_resting_heart_rate: int | None
     resting_heart_rate_change: int | None
     recorded_at: date | None
+
+
+class PendingMeasurementResponse(BaseModel):
+    client_id: uuid.UUID
+    client_name: str
+    last_measurement_date: date
+    days_overdue: int
