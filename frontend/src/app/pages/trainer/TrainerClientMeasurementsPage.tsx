@@ -14,9 +14,9 @@ import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate } from "@/lib/format"
 
 /** Trainer-facing client measurements view: latest measurement (with inline
- * Add/Edit) plus full history. Reached from the Pending Measurements page's
- * row links, which pass ?action=add or ?action=edit to auto-open the right
- * form on arrival. */
+ * Add/Edit) plus full history. Reached from the Measurements page's Pending
+ * tab row links, which pass ?action=add or ?action=edit to auto-open the
+ * right form on arrival. */
 export function TrainerClientMeasurementsPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -54,9 +54,9 @@ export function TrainerClientMeasurementsPage() {
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" size="sm" render={<Link to="/trainer/pending-measurements" />} nativeButton={false}>
+      <Button variant="ghost" size="sm" render={<Link to="/trainer/measurements" />} nativeButton={false}>
         <ChevronLeft className="size-4" />
-        Back to Pending Measurements
+        Back to Measurements
       </Button>
 
       <div>

@@ -21,7 +21,7 @@ import { TrainerEditPage } from "@/app/pages/trainers/TrainerEditPage"
 import { TrainerDetailsPage } from "@/app/pages/trainers/TrainerDetailsPage"
 import { TrainerProfilePage } from "@/app/pages/trainer/TrainerProfilePage"
 import { TrainerAvailabilityPage } from "@/app/pages/trainer/TrainerAvailabilityPage"
-import { TrainerPendingMeasurementsPage } from "@/app/pages/trainer/TrainerPendingMeasurementsPage"
+import { TrainerMeasurementsPage } from "@/app/pages/trainer/TrainerMeasurementsPage"
 import { TrainerClientMeasurementsPage } from "@/app/pages/trainer/TrainerClientMeasurementsPage"
 import { TrainerClientsPage } from "@/app/pages/trainer/TrainerClientsPage"
 import { TrainerSessionNotesPage } from "@/app/pages/trainer/TrainerSessionNotesPage"
@@ -133,7 +133,7 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
       children: [{ index: true, element: <TrainerProfilePage /> }],
     },
     Measurements: {
-      children: [{ index: true, element: <TrainerPendingMeasurementsPage /> }],
+      children: [{ index: true, element: <TrainerMeasurementsPage /> }],
     },
     Availability: {
       children: [{ index: true, element: <TrainerAvailabilityPage /> }],
@@ -213,9 +213,10 @@ export const router = createBrowserRouter([
               { index: true, element: <Navigate to="dashboard" replace /> },
               ...roleSectionChildren(Role.TRAINER),
               // Not a NAV_ITEMS entry (no sidebar link) - reached by clicking a
-              // row on the Pending Measurements page or the Assigned Clients
-              // list's "View Client" action. The bare /trainer/clients index
-              // route above (SECTION_OVERRIDES "Assigned Clients") is separate.
+              // row on the Measurements page (Pending or All tab) or the
+              // Assigned Clients list's "View Client" action. The bare
+              // /trainer/clients index route above (SECTION_OVERRIDES
+              // "Assigned Clients") is separate.
               { path: "clients/:id", element: <TrainerClientMeasurementsPage /> },
             ],
           },

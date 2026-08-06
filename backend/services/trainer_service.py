@@ -415,16 +415,18 @@ class TrainerService:
         measurement_overdue_days = await self._application_setting_service.get_int(
             "measurement_overdue_days"
         )
+        # Clients with at least one measurement recorded; a client never
+        # measured at all is "missing", not "pending" - excluded here so it
+        # isn't double-counted as overdue (matches the dashboards and
+        # GET /measurements/pending, which draw the same distinction).
         latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients(
             client_ids
         )
         today = current_india_date()
         pending_measurements = sum(
             1
-            for client_id in client_ids
-            if is_measurement_overdue(
-                latest_measurements.get(client_id), today, measurement_overdue_days
-            )
+            for recorded_at in latest_measurements.values()
+            if is_measurement_overdue(recorded_at, today, measurement_overdue_days)
         )
 
         return TrainerSummary(

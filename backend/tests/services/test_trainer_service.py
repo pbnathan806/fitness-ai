@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta, timezone
 import pytest
 
 from core.constants import RoleName
+from models.client_trainer_assignment import ClientTrainerAssignment
 from models.role import Role
 from models.trainer_availability import TrainerAvailability
 from models.trainer_profile import TrainerProfile
@@ -27,9 +28,9 @@ from tests.services.test_application_setting_service import (
 )
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_check_in_service import FakeCheckInRepository, _make_check_in
-from tests.services.test_client_service import FakeClientRepository, FakeUserRepository
+from tests.services.test_client_service import FakeClientRepository, FakeUserRepository, _make_client
 from tests.services.test_dashboard_service import FakeDashboardRepository
-from tests.services.test_measurement_service import FakeMeasurementRepository
+from tests.services.test_measurement_service import FakeMeasurementRepository, _make_measurement
 from tests.services.test_session_service import FakeSessionRepository, _make_session
 
 
@@ -673,6 +674,54 @@ def test_get_summary_returns_zero_metrics_with_no_data():
     assert summary.sessions_this_week == 0
     assert summary.completed_sessions_this_month == 0
     assert summary.pending_check_ins == 0
+    assert summary.pending_measurements == 0
+
+
+def test_get_summary_counts_client_with_stale_measurement_as_pending():
+    service, trainer_repository, _, _, assignment_repository, _, _, measurement_repository, _ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    trainer_repository.seed(trainer)
+    assignment_repository.seed_trainer(trainer)
+
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client, "stale@example.com")
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    measurement_repository.seed(
+        _make_measurement(client.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc) - timedelta(days=30))
+    )
+
+    summary = asyncio.run(
+        service.get_summary(
+            actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), trainer_id=trainer.id
+        )
+    )
+
+    assert summary.pending_measurements == 1
+
+
+def test_get_summary_excludes_never_measured_client_from_pending_measurements():
+    service, trainer_repository, _, _, assignment_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    trainer_repository.seed(trainer)
+    assignment_repository.seed_trainer(trainer)
+
+    client = _make_client(user_id=uuid.uuid4())
+    assignment_repository.seed_client(client, "nevermeasured@example.com")
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    # No measurement seeded at all - client has never been measured.
+
+    summary = asyncio.run(
+        service.get_summary(
+            actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), trainer_id=trainer.id
+        )
+    )
+
     assert summary.pending_measurements == 0
 
 

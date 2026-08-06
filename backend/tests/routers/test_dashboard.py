@@ -129,7 +129,8 @@ def test_trainer_dashboard_succeeds_for_trainer():
     body = response.json()
     assert body["assigned_clients"] == 2
     assert body["active_clients"] == 1
-    assert body["pending_measurements"] == 1
+    # client_b has never been measured at all ("missing"), not counted here.
+    assert body["pending_measurements"] == 0
 
 
 def test_super_admin_dashboard_requires_authentication():

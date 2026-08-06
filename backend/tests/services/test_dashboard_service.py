@@ -219,7 +219,8 @@ def _build_shared_fixture():
     )
 
     # client_b: EXPIRED subscription (5 days past end_date, within the
-    # 30-day grace window), no measurement ever recorded (overdue).
+    # 30-day grace window), no measurement ever recorded - "missing", not
+    # "pending" (see test_..._excludes_never_measured_clients_from_pending_measurements below).
     subscription_repository.seed(
         _make_subscription(
             client_b.id, plan.id, start_date=today - timedelta(days=35), end_date=today - timedelta(days=5)
@@ -301,7 +302,70 @@ def test_trainer_dashboard_computes_all_fields():
     assert dashboard.sessions_today == 2
     assert dashboard.upcoming_sessions_next_7_days == 3
     assert dashboard.pending_check_ins == 1
+    # client_b has never been measured at all ("missing"), not counted here.
+    assert dashboard.pending_measurements == 0
+
+
+def test_trainer_dashboard_counts_client_with_stale_measurement_as_pending():
+    assignment_repository = FakeAssignmentRepository()
+    client_repository = FakeClientRepository()
+    measurement_repository = FakeMeasurementRepository()
+
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+
+    client = _make_client(uuid.uuid4())
+    assignment_repository.seed_client(client, "stale@example.com")
+    client_repository.seed(client, "stale@example.com")
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    measurement_repository.seed(
+        _make_measurement(client.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc) - timedelta(days=30))
+    )
+
+    service = _make_service(
+        assignment_repository=assignment_repository,
+        client_repository=client_repository,
+        measurement_repository=measurement_repository,
+        application_setting_service=_application_setting_service(measurement_overdue_days=14),
+    )
+
+    dashboard = asyncio.run(
+        service.get_trainer_dashboard(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
     assert dashboard.pending_measurements == 1
+
+
+def test_trainer_dashboard_excludes_never_measured_client_from_pending_measurements():
+    assignment_repository = FakeAssignmentRepository()
+    client_repository = FakeClientRepository()
+
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(trainer_user_id)
+    assignment_repository.seed_trainer(trainer)
+
+    client = _make_client(uuid.uuid4())
+    assignment_repository.seed_client(client, "nevermeasured@example.com")
+    client_repository.seed(client, "nevermeasured@example.com")
+    assignment_repository.seed_assignment(
+        ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
+    )
+    # No measurement seeded at all - client has never been measured.
+
+    service = _make_service(
+        assignment_repository=assignment_repository,
+        client_repository=client_repository,
+        application_setting_service=_application_setting_service(measurement_overdue_days=14),
+    )
+
+    dashboard = asyncio.run(
+        service.get_trainer_dashboard(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert dashboard.pending_measurements == 0
 
 
 def test_super_admin_dashboard_computes_all_fields():

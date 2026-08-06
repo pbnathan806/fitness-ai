@@ -135,15 +135,17 @@ class DashboardService:
             == "ACTIVE"
         )
 
+        # Clients with at least one measurement recorded; a client never
+        # measured at all is "missing", not "pending" - excluded here so it
+        # isn't double-counted as overdue (matches the Super Admin dashboard
+        # and GET /measurements/pending, which draw the same distinction).
         latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients(
             client_ids
         )
         pending_measurements = sum(
             1
-            for client_id in client_ids
-            if is_measurement_overdue(
-                latest_measurements.get(client_id), today, measurement_overdue_days
-            )
+            for recorded_at in latest_measurements.values()
+            if is_measurement_overdue(recorded_at, today, measurement_overdue_days)
         )
 
         sessions_today = await self._session_repository.count_in_range(

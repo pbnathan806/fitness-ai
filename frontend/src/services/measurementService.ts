@@ -9,6 +9,11 @@ import type {
   PendingMeasurement,
 } from "@/types/measurement"
 
+// `GET /measurements` has no filter params, so (as in sessionService and
+// checkInService) every page is walked once, bounded by LIST_ALL_MAX_PAGES.
+const LIST_ALL_PAGE_SIZE = 100
+const LIST_ALL_MAX_PAGES = 50
+
 export const measurementService = {
   /** Server-paginated list across all clients (SUPER_ADMIN), assigned
    * clients (TRAINER), or own records (CLIENT) - see backend
@@ -18,6 +23,20 @@ export const measurementService = {
       params: { page, page_size: pageSize },
     })
     return data
+  },
+
+  /** Calls `measurementService.list` (not `this.list`) since this is passed
+   * around as a bare function reference (e.g. react-query `queryFn`), which
+   * would otherwise lose its `this` binding. */
+  async listAllMeasurements(): Promise<Measurement[]> {
+    const first = await measurementService.list(1, LIST_ALL_PAGE_SIZE)
+    const totalPages = Math.min(first.total_pages, LIST_ALL_MAX_PAGES)
+    if (totalPages <= 1) return first.items
+
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) => measurementService.list(i + 2, LIST_ALL_PAGE_SIZE)),
+    )
+    return [first.items, ...rest.map((page) => page.items)].flat()
   },
 
   /** Returns null when the client has no measurements yet (backend 404s in that case). */
