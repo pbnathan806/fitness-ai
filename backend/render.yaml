@@ -31,6 +31,12 @@ services:
         value: "30"
       - key: PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
         value: "30"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: "Fitness AI Platform <noreply@limitedeals.com>"
+      - key: FRONTEND_BASE_URL
+        value: "https://limitedeals.com"
       - key: CORS_ALLOWED_ORIGINS
         sync: false
       - key: ENVIRONMENT

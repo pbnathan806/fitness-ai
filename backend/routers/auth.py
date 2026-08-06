@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.deps import CurrentUser, get_current_user
 from database.session import get_db
 from repositories.password_reset_token_repository import (
@@ -26,6 +27,7 @@ from services.password_reset_service import (
     InvalidResetTokenError,
     PasswordResetNotifier,
     PasswordResetService,
+    ResendPasswordResetNotifier,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -46,6 +48,13 @@ def get_password_reset_token_repository(
 
 
 def get_password_reset_notifier() -> PasswordResetNotifier:
+    # Real email only in production; local/dev never needs a Resend account.
+    if settings.is_production:
+        return ResendPasswordResetNotifier(
+            api_key=settings.resend_api_key,
+            from_email=settings.resend_from_email,
+            frontend_base_url=settings.frontend_base_url,
+        )
     return ConsolePasswordResetNotifier()
 
 

@@ -1,6 +1,9 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
+
+import resend
 
 from core.config import settings
 from core.security import generate_password_reset_token, hash_password, hash_reset_token
@@ -39,6 +42,89 @@ class ConsolePasswordResetNotifier(PasswordResetNotifier):
 
     async def send_reset_link(self, email: str, raw_token: str) -> None:
         print(f"[DEV] Password reset requested for {email}. Reset token: {raw_token}")
+
+
+_RESET_EMAIL_SUBJECT = "Reset your Fitness AI Platform password"
+
+_RESET_EMAIL_TEXT_TEMPLATE = """\
+Hi,
+
+We received a request to reset your Fitness AI Platform password.
+
+Reset your password using the link below:
+{reset_url}
+
+This link expires in {expire_minutes} minutes. If you didn't request this, \
+you can safely ignore this email - your password will not be changed.
+"""
+
+_RESET_EMAIL_HTML_TEMPLATE = """\
+<!DOCTYPE html>
+<html>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; margin: 0; padding: 32px 16px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; padding: 32px;">
+            <tr>
+              <td>
+                <h1 style="font-size: 18px; margin: 0 0 16px; color: #18181b;">Reset your password</h1>
+                <p style="font-size: 14px; color: #3f3f46; line-height: 1.5; margin: 0 0 24px;">
+                  We received a request to reset your Fitness AI Platform password. Click the button below to choose a new one.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="border-radius: 6px; background-color: #18181b;">
+                      <a href="{reset_url}" style="display: inline-block; padding: 10px 20px; font-size: 14px; color: #ffffff; text-decoration: none; font-weight: 500;">
+                        Reset Password
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="font-size: 12px; color: #71717a; line-height: 1.5; margin: 24px 0 0;">
+                  This link expires in {expire_minutes} minutes. If you didn't request this, you can safely ignore this email - your password will not be changed.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+class ResendPasswordResetNotifier(PasswordResetNotifier):
+    """Production email delivery via Resend.
+
+    Only wired in when `settings.is_production` (see
+    routers/auth.py::get_password_reset_notifier); local/dev environments
+    use ConsolePasswordResetNotifier instead, so a Resend account is never
+    required to run this app locally.
+    """
+
+    def __init__(self, api_key: str, from_email: str, frontend_base_url: str) -> None:
+        resend.api_key = api_key
+        self._from_email = from_email
+        self._frontend_base_url = frontend_base_url
+
+    async def send_reset_link(self, email: str, raw_token: str) -> None:
+        reset_url = f"{self._frontend_base_url}/reset-password?token={raw_token}"
+        expire_minutes = settings.password_reset_token_expire_minutes
+
+        params: resend.Emails.SendParams = {
+            "from": self._from_email,
+            "to": [email],
+            "subject": _RESET_EMAIL_SUBJECT,
+            "html": _RESET_EMAIL_HTML_TEMPLATE.format(reset_url=reset_url, expire_minutes=expire_minutes),
+            "text": _RESET_EMAIL_TEXT_TEMPLATE.format(reset_url=reset_url, expire_minutes=expire_minutes),
+        }
+        # resend.Emails.send is a blocking network call; run it off the
+        # event loop so a slow/hung request to Resend can't stall other
+        # requests being served by this async process.
+        await asyncio.to_thread(resend.Emails.send, params)
+        logger.info("Password reset email sent via Resend.")
 
 
 class PasswordResetService:

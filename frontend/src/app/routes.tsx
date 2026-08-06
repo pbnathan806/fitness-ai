@@ -2,6 +2,8 @@ import { Navigate, createBrowserRouter, type RouteObject } from "react-router-do
 import { ProtectedRoute } from "@/components/common/ProtectedRoute"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { LoginPage } from "@/app/pages/LoginPage"
+import { ForgotPasswordPage } from "@/app/pages/ForgotPasswordPage"
+import { ResetPasswordPage } from "@/app/pages/ResetPasswordPage"
 import { SelectRolePage } from "@/app/pages/SelectRolePage"
 import { UnauthorizedPage } from "@/app/pages/UnauthorizedPage"
 import { NotFoundPage } from "@/app/pages/NotFoundPage"
@@ -183,6 +185,8 @@ function roleSectionChildren(role: RoleName, dashboardElement: ReactNode = <Dash
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/select-role", element: <SelectRolePage /> },
   { path: "/unauthorized", element: <UnauthorizedPage /> },
   {

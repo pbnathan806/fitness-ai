@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +14,7 @@ from services.password_reset_service import (
     InvalidResetTokenError,
     PasswordResetNotifier,
     PasswordResetService,
+    ResendPasswordResetNotifier,
 )
 
 
@@ -187,3 +189,38 @@ def test_reset_password_rejects_already_used_token():
 
     with pytest.raises(InvalidResetTokenError):
         asyncio.run(service.reset_password(raw_token, "AnotherStr0ngPassword!"))
+
+
+# --- ResendPasswordResetNotifier -------------------------------------------------
+
+
+def test_resend_notifier_sends_email_with_reset_link_and_expiry():
+    notifier = ResendPasswordResetNotifier(
+        api_key="re_test_key",
+        from_email="Fitness AI Platform <noreply@limitedeals.com>",
+        frontend_base_url="https://limitedeals.com",
+    )
+
+    with patch("services.password_reset_service.resend.Emails.send") as mock_send:
+        asyncio.run(notifier.send_reset_link("trainer@example.com", "raw-token-abc"))
+
+    assert mock_send.call_count == 1
+    params = mock_send.call_args[0][0]
+    assert params["to"] == ["trainer@example.com"]
+    assert params["from"] == "Fitness AI Platform <noreply@limitedeals.com>"
+    reset_link = "https://limitedeals.com/reset-password?token=raw-token-abc"
+    assert reset_link in params["html"]
+    assert reset_link in params["text"]
+    assert "30" in params["text"]  # default password_reset_token_expire_minutes
+
+
+def test_resend_notifier_sets_module_level_api_key():
+    ResendPasswordResetNotifier(
+        api_key="re_specific_key",
+        from_email="noreply@limitedeals.com",
+        frontend_base_url="https://limitedeals.com",
+    )
+
+    import resend
+
+    assert resend.api_key == "re_specific_key"

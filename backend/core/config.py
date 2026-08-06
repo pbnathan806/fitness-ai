@@ -17,6 +17,15 @@ class Settings(BaseSettings):
 
     password_reset_token_expire_minutes: int = 30
 
+    # Only read in production (see routers/auth.py::get_password_reset_notifier);
+    # local/dev environments use ConsolePasswordResetNotifier instead, so
+    # these are safe to leave unset for local development.
+    resend_api_key: str = ""
+    resend_from_email: str = "Fitness AI Platform <noreply@limitedeals.com>"
+    # Used to build the clickable reset-password link embedded in the email
+    # (the backend has no other way to know the frontend's public URL).
+    frontend_base_url: str = "http://localhost:5173"
+
     postgres_ssl_mode: str = "disable"
     cors_allowed_origins: str = "http://localhost:5173"
 

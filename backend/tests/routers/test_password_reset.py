@@ -156,3 +156,31 @@ def test_reset_password_rejects_short_new_password():
     )
 
     assert response.status_code == 422
+
+
+# --- get_password_reset_notifier (dev vs. production wiring) ---------------------
+
+
+def test_get_password_reset_notifier_returns_console_notifier_in_dev(monkeypatch):
+    from core.config import settings
+    from services.password_reset_service import ConsolePasswordResetNotifier
+
+    monkeypatch.setattr(settings, "environment", "development")
+
+    notifier = get_password_reset_notifier()
+
+    assert isinstance(notifier, ConsolePasswordResetNotifier)
+
+
+def test_get_password_reset_notifier_returns_resend_notifier_in_production(monkeypatch):
+    from core.config import settings
+    from services.password_reset_service import ResendPasswordResetNotifier
+
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "resend_api_key", "re_test")
+    monkeypatch.setattr(settings, "resend_from_email", "noreply@limitedeals.com")
+    monkeypatch.setattr(settings, "frontend_base_url", "https://limitedeals.com")
+
+    notifier = get_password_reset_notifier()
+
+    assert isinstance(notifier, ResendPasswordResetNotifier)
