@@ -23,6 +23,9 @@ import { TrainerProfilePage } from "@/app/pages/trainer/TrainerProfilePage"
 import { TrainerAvailabilityPage } from "@/app/pages/trainer/TrainerAvailabilityPage"
 import { TrainerPendingMeasurementsPage } from "@/app/pages/trainer/TrainerPendingMeasurementsPage"
 import { TrainerClientMeasurementsPage } from "@/app/pages/trainer/TrainerClientMeasurementsPage"
+import { TrainerClientsPage } from "@/app/pages/trainer/TrainerClientsPage"
+import { TrainerSessionNotesPage } from "@/app/pages/trainer/TrainerSessionNotesPage"
+import { TrainerCheckInsPage } from "@/app/pages/trainer/TrainerCheckInsPage"
 import { SubscriptionPlansListPage } from "@/app/pages/subscriptionPlans/SubscriptionPlansListPage"
 import { SubscriptionPlanCreatePage } from "@/app/pages/subscriptionPlans/SubscriptionPlanCreatePage"
 import { SubscriptionPlanEditPage } from "@/app/pages/subscriptionPlans/SubscriptionPlanEditPage"
@@ -117,6 +120,15 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { path: ":id", element: <TrainerSessionDetailsPage /> },
       ],
     },
+    "Assigned Clients": {
+      children: [{ index: true, element: <TrainerClientsPage /> }],
+    },
+    "Session Notes": {
+      children: [{ index: true, element: <TrainerSessionNotesPage /> }],
+    },
+    "Check-ins": {
+      children: [{ index: true, element: <TrainerCheckInsPage /> }],
+    },
     Profile: {
       children: [{ index: true, element: <TrainerProfilePage /> }],
     },
@@ -201,8 +213,9 @@ export const router = createBrowserRouter([
               { index: true, element: <Navigate to="dashboard" replace /> },
               ...roleSectionChildren(Role.TRAINER),
               // Not a NAV_ITEMS entry (no sidebar link) - reached by clicking a
-              // client row on the Pending Measurements page. "Assigned Clients"
-              // (NAV_ITEMS) still owns the bare /trainer/clients index route.
+              // row on the Pending Measurements page or the Assigned Clients
+              // list's "View Client" action. The bare /trainer/clients index
+              // route above (SECTION_OVERRIDES "Assigned Clients") is separate.
               { path: "clients/:id", element: <TrainerClientMeasurementsPage /> },
             ],
           },

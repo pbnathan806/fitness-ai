@@ -1,9 +1,36 @@
 import { isAxiosError } from "axios"
 import { apiClient } from "@/services/apiClient"
-import type { CheckIn, CheckInCreateInput, CheckInUpdateInput } from "@/types/checkIn"
+import type { CheckIn, CheckInCreateInput, CheckInUpdateInput, PaginatedCheckIns } from "@/types/checkIn"
 import type { PendingCheckIn } from "@/types/dashboard"
 
+// `GET /check-ins` has no filter params, so (as in sessionService.listAllSessions)
+// every page is walked once, bounded by LIST_ALL_MAX_PAGES, and the backend
+// already scopes the results to the caller's own assigned clients for TRAINER.
+const LIST_ALL_PAGE_SIZE = 100
+const LIST_ALL_MAX_PAGES = 50
+
 export const checkInService = {
+  async listCheckIns(page: number, pageSize: number): Promise<PaginatedCheckIns> {
+    const { data } = await apiClient.get<PaginatedCheckIns>("/check-ins", {
+      params: { page, page_size: pageSize },
+    })
+    return data
+  },
+
+  /** Calls `checkInService.listCheckIns` (not `this.listCheckIns`) since this
+   * is passed around as a bare function reference (e.g. react-query
+   * `queryFn`), which would otherwise lose its `this` binding. */
+  async listAllCheckIns(): Promise<CheckIn[]> {
+    const first = await checkInService.listCheckIns(1, LIST_ALL_PAGE_SIZE)
+    const totalPages = Math.min(first.total_pages, LIST_ALL_MAX_PAGES)
+    if (totalPages <= 1) return first.items
+
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) => checkInService.listCheckIns(i + 2, LIST_ALL_PAGE_SIZE)),
+    )
+    return [first.items, ...rest.map((page) => page.items)].flat()
+  },
+
   async getClientCheckIns(clientId: string): Promise<CheckIn[]> {
     const { data } = await apiClient.get<CheckIn[]>(`/check-ins/client/${clientId}`)
     return data

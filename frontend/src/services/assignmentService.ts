@@ -1,6 +1,6 @@
 import { apiClient } from "@/services/apiClient"
 import type { PaginatedResponse } from "@/types/dashboard"
-import type { Assignment, AssignmentCreateInput } from "@/types/assignment"
+import type { AssignedClient, Assignment, AssignmentCreateInput } from "@/types/assignment"
 
 // There is no "assignments for client X" endpoint for SUPER_ADMIN and no
 // trainer-directory endpoint at all (Task 22.3 scope). Same convention as
@@ -14,6 +14,13 @@ export const assignmentService = {
       params: { page: 1, page_size: LOOKUP_PAGE_SIZE },
     })
     return data.items
+  },
+
+  /** The current trainer's own assigned clients (TRAINER only - SUPER_ADMIN
+   * gets 403 from this endpoint, use listAssignmentsForLookup instead). */
+  async getMyClients(): Promise<AssignedClient[]> {
+    const { data } = await apiClient.get<AssignedClient[]>("/assignments/my-clients")
+    return data
   },
 
   async createAssignment(payload: AssignmentCreateInput): Promise<Assignment> {

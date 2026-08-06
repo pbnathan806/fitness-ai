@@ -1,3 +1,5 @@
+import type { PaginatedResponse } from "@/types/dashboard"
+
 export interface CheckIn {
   id: string
   session_id: string
@@ -25,6 +27,8 @@ export interface CheckInCreateInput {
   diet_followed: boolean | null
   notes: string | null
 }
+
+export type PaginatedCheckIns = PaginatedResponse<CheckIn>
 
 export interface CheckInUpdateInput {
   sleep_hours?: number | null
