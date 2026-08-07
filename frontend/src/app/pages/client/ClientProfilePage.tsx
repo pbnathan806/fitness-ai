@@ -209,7 +209,9 @@ export function ClientProfilePage() {
               {trainersQuery.data!.map((trainer) => (
                 <li key={trainer.assignment_id} className="space-y-1 py-3 first:pt-0 last:pb-0">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-medium">{trainer.email}</p>
+                    <p className="truncate text-sm font-medium">
+                      {`${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || "Trainer"}
+                    </p>
                     {trainer.is_primary && (
                       <Badge variant="default">
                         <Star className="size-3" />

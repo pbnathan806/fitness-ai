@@ -42,10 +42,11 @@ class AssignedClientResponse(BaseModel):
 class AssignedTrainerResponse(BaseModel):
     assignment_id: uuid.UUID
     trainer_id: uuid.UUID
+    first_name: str | None
+    last_name: str | None
     specialization: str | None
     experience_years: int | None
     bio: str | None
     timezone: str | None
     country: str | None
-    email: EmailStr
     is_primary: bool

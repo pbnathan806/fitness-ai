@@ -23,11 +23,10 @@ class AssignedClientRecord:
 
 @dataclass(frozen=True)
 class AssignedTrainerRecord:
-    """A trainer assigned to a client, joined with the assignment and the trainer's account email."""
+    """A trainer assigned to a client, joined with the assignment."""
 
     assignment: ClientTrainerAssignment
     trainer: TrainerProfile
-    email: str
 
 
 class AssignmentRepository(ABC):
@@ -178,13 +177,12 @@ class SQLAlchemyAssignmentRepository(AssignmentRepository):
         self, client_id: uuid.UUID
     ) -> list[AssignedTrainerRecord]:
         result = await self._session.execute(
-            select(ClientTrainerAssignment, TrainerProfile, User.email)
+            select(ClientTrainerAssignment, TrainerProfile)
             .join(TrainerProfile, TrainerProfile.id == ClientTrainerAssignment.trainer_id)
-            .join(User, User.id == TrainerProfile.user_id)
             .where(ClientTrainerAssignment.client_id == client_id)
             .order_by(ClientTrainerAssignment.assigned_at.desc())
         )
         return [
-            AssignedTrainerRecord(assignment=assignment, trainer=trainer, email=email)
-            for assignment, trainer, email in result.all()
+            AssignedTrainerRecord(assignment=assignment, trainer=trainer)
+            for assignment, trainer in result.all()
         ]

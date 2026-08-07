@@ -111,10 +111,8 @@ class FakeAssignmentRepository(AssignmentRepository):
         records = []
         for assignment in self._assignments.values():
             if assignment.client_id == client_id:
-                trainer, email = self._trainers[assignment.trainer_id]
-                records.append(
-                    AssignedTrainerRecord(assignment=assignment, trainer=trainer, email=email)
-                )
+                trainer, _email = self._trainers[assignment.trainer_id]
+                records.append(AssignedTrainerRecord(assignment=assignment, trainer=trainer))
         return records
 
 
@@ -456,7 +454,7 @@ def test_list_my_trainers_returns_assigned_trainers_for_client():
     service, assignment_repository, client_repository = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
-    trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer = _make_trainer(user_id=uuid.uuid4(), first_name="Jamie", last_name="Fox")
     client_repository.seed(client, "client@example.com")
     assignment_repository.seed_client(client)
     assignment_repository.seed_trainer(trainer, "trainer@example.com")
@@ -475,7 +473,10 @@ def test_list_my_trainers_returns_assigned_trainers_for_client():
 
     assert len(trainers) == 1
     assert trainers[0].trainer_id == trainer.id
+    assert trainers[0].first_name == "Jamie"
+    assert trainers[0].last_name == "Fox"
     assert trainers[0].is_primary is True
+    assert not hasattr(trainers[0], "email")
 
 
 def test_list_my_trainers_rejects_non_client():

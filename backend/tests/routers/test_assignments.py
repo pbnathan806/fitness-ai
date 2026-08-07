@@ -378,7 +378,7 @@ def test_get_my_trainers_succeeds_for_client():
     client_repository = FakeClientRepository()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
-    trainer = _make_trainer(user_id=uuid.uuid4())
+    trainer = _make_trainer(user_id=uuid.uuid4(), first_name="Jamie", last_name="Fox")
     client_repository.seed(client, "client@example.com")
     assignment_repository.seed_client(client)
     assignment_repository.seed_trainer(trainer, "trainer@example.com")
@@ -403,7 +403,10 @@ def test_get_my_trainers_succeeds_for_client():
     body = response.json()
     assert len(body) == 1
     assert body[0]["trainer_id"] == str(trainer.id)
+    assert body[0]["first_name"] == "Jamie"
+    assert body[0]["last_name"] == "Fox"
     assert body[0]["is_primary"] is True
+    assert "email" not in body[0]
 
 
 def test_get_my_trainers_rejects_trainer_role():

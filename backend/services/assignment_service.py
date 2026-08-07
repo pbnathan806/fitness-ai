@@ -67,12 +67,13 @@ class AssignedClient:
 class AssignedTrainer:
     assignment_id: uuid.UUID
     trainer_id: uuid.UUID
+    first_name: str | None
+    last_name: str | None
     specialization: str | None
     experience_years: int | None
     bio: str | None
     timezone: str | None
     country: str | None
-    email: str
     is_primary: bool
 
 
@@ -221,12 +222,13 @@ class AssignmentService:
             AssignedTrainer(
                 assignment_id=record.assignment.id,
                 trainer_id=record.trainer.id,
+                first_name=record.trainer.first_name,
+                last_name=record.trainer.last_name,
                 specialization=record.trainer.specialization,
                 experience_years=record.trainer.experience_years,
                 bio=record.trainer.bio,
                 timezone=record.trainer.timezone,
                 country=record.trainer.country,
-                email=record.email,
                 is_primary=record.assignment.is_primary,
             )
             for record in records

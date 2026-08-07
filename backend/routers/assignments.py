@@ -79,12 +79,13 @@ def _to_trainer_response(item: AssignedTrainer) -> AssignedTrainerResponse:
     return AssignedTrainerResponse(
         assignment_id=item.assignment_id,
         trainer_id=item.trainer_id,
+        first_name=item.first_name,
+        last_name=item.last_name,
         specialization=item.specialization,
         experience_years=item.experience_years,
         bio=item.bio,
         timezone=item.timezone,
         country=item.country,
-        email=item.email,
         is_primary=item.is_primary,
     )
 
