@@ -347,6 +347,8 @@ def test_get_my_clients_succeeds_for_trainer():
     assert len(body) == 1
     assert body[0]["client_id"] == str(client.id)
     assert body[0]["is_primary"] is True
+    assert "email" not in body[0]
+    assert "phone_number" not in body[0]
 
 
 def test_get_my_clients_rejects_super_admin():

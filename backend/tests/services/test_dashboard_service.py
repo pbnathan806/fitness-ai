@@ -24,7 +24,7 @@ from tests.services.test_application_setting_service import (
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_check_in_service import FakeCheckInRepository, _make_check_in
 from tests.services.test_client_service import FakeClientRepository, _make_client
-from tests.services.test_measurement_service import FakeMeasurementRepository, _make_measurement
+from tests.services.test_physical_assessment_service import FakePhysicalAssessmentRepository, _make_physical_assessment
 from tests.services.test_session_service import FakeSessionRepository, _make_session
 from tests.services.test_subscription_plan_service import _make_plan
 from tests.services.test_subscription_service import FakeSubscriptionRepository, _make_subscription
@@ -75,10 +75,10 @@ class FakeDashboardRepository(DashboardRepository):
 
 
 def _application_setting_service(
-    measurement_overdue_days: int = 14, subscription_expired_days: int = 30
+    physical_assessment_overdue_days: int = 14, subscription_expired_days: int = 30
 ) -> ApplicationSettingService:
     repository = FakeApplicationSettingRepository()
-    repository.seed(_make_setting(key="measurement_overdue_days", value=str(measurement_overdue_days)))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value=str(physical_assessment_overdue_days)))
     repository.seed(
         _make_setting(key="subscription_expired_days", value=str(subscription_expired_days))
     )
@@ -92,7 +92,7 @@ def _make_service(
     assignment_repository=None,
     session_repository=None,
     check_in_repository=None,
-    measurement_repository=None,
+    physical_assessment_repository=None,
     subscription_repository=None,
     application_setting_service=None,
 ) -> DashboardService:
@@ -102,7 +102,7 @@ def _make_service(
         assignment_repository or FakeAssignmentRepository(),
         session_repository or FakeSessionRepository(),
         check_in_repository or FakeCheckInRepository(),
-        measurement_repository or FakeMeasurementRepository(),
+        physical_assessment_repository or FakePhysicalAssessmentRepository(),
         subscription_repository or FakeSubscriptionRepository(),
         application_setting_service or _application_setting_service(),
     )
@@ -170,8 +170,8 @@ def test_client_dashboard_raises_when_no_client_profile():
 # ---------------------------------------------------------------------------
 # Trainer / Super Admin dashboards share one fixture: two assigned clients,
 # one ACTIVE (client_a) and one EXPIRED (client_b), with sessions/check-ins/
-# measurements positioned relative to the real current IST day so the test
-# is robust no matter when it runs.
+# physical assessments positioned relative to the real current IST day so the
+# test is robust no matter when it runs.
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +181,7 @@ def _build_shared_fixture():
     assignment_repository = FakeAssignmentRepository()
     session_repository = FakeSessionRepository()
     check_in_repository = FakeCheckInRepository()
-    measurement_repository = FakeMeasurementRepository()
+    physical_assessment_repository = FakePhysicalAssessmentRepository()
     subscription_repository = FakeSubscriptionRepository()
 
     trainer_user_id = uuid.uuid4()
@@ -208,19 +208,19 @@ def _build_shared_fixture():
     today = current_india_date()
     plan = _make_plan()
 
-    # client_a: ACTIVE subscription, recent measurement (not overdue).
+    # client_a: ACTIVE subscription, recent physical_assessment (not overdue).
     subscription_repository.seed(
         _make_subscription(
             client_a.id, plan.id, start_date=today - timedelta(days=10), end_date=today + timedelta(days=10)
         )
     )
-    measurement_repository.seed(
-        _make_measurement(client_a.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc))
+    physical_assessment_repository.seed(
+        _make_physical_assessment(client_a.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc))
     )
 
     # client_b: EXPIRED subscription (5 days past end_date, within the
-    # 30-day grace window), no measurement ever recorded - "missing", not
-    # "pending" (see test_..._excludes_never_measured_clients_from_pending_measurements below).
+    # 30-day grace window), no physical_assessment ever recorded - "missing", not
+    # "pending" (see test_..._excludes_never_measured_clients_from_pending_physical_assessments below).
     subscription_repository.seed(
         _make_subscription(
             client_b.id, plan.id, start_date=today - timedelta(days=35), end_date=today - timedelta(days=5)
@@ -271,7 +271,7 @@ def _build_shared_fixture():
     session_repository.seed(session_future)
 
     application_setting_service = _application_setting_service(
-        measurement_overdue_days=14, subscription_expired_days=30
+        physical_assessment_overdue_days=14, subscription_expired_days=30
     )
 
     return {
@@ -280,7 +280,7 @@ def _build_shared_fixture():
         "assignment_repository": assignment_repository,
         "session_repository": session_repository,
         "check_in_repository": check_in_repository,
-        "measurement_repository": measurement_repository,
+        "physical_assessment_repository": physical_assessment_repository,
         "subscription_repository": subscription_repository,
         "application_setting_service": application_setting_service,
         "trainer_user_id": trainer_user_id,
@@ -303,13 +303,13 @@ def test_trainer_dashboard_computes_all_fields():
     assert dashboard.upcoming_sessions_next_7_days == 3
     assert dashboard.pending_check_ins == 1
     # client_b has never been measured at all ("missing"), not counted here.
-    assert dashboard.pending_measurements == 0
+    assert dashboard.pending_physical_assessments == 0
 
 
-def test_trainer_dashboard_counts_client_with_stale_measurement_as_pending():
+def test_trainer_dashboard_counts_client_with_stale_physical_assessment_as_pending():
     assignment_repository = FakeAssignmentRepository()
     client_repository = FakeClientRepository()
-    measurement_repository = FakeMeasurementRepository()
+    physical_assessment_repository = FakePhysicalAssessmentRepository()
 
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(trainer_user_id)
@@ -321,25 +321,25 @@ def test_trainer_dashboard_counts_client_with_stale_measurement_as_pending():
     assignment_repository.seed_assignment(
         ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
     )
-    measurement_repository.seed(
-        _make_measurement(client.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc) - timedelta(days=30))
+    physical_assessment_repository.seed(
+        _make_physical_assessment(client.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc) - timedelta(days=30))
     )
 
     service = _make_service(
         assignment_repository=assignment_repository,
         client_repository=client_repository,
-        measurement_repository=measurement_repository,
-        application_setting_service=_application_setting_service(measurement_overdue_days=14),
+        physical_assessment_repository=physical_assessment_repository,
+        application_setting_service=_application_setting_service(physical_assessment_overdue_days=14),
     )
 
     dashboard = asyncio.run(
         service.get_trainer_dashboard(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
     )
 
-    assert dashboard.pending_measurements == 1
+    assert dashboard.pending_physical_assessments == 1
 
 
-def test_trainer_dashboard_excludes_never_measured_client_from_pending_measurements():
+def test_trainer_dashboard_excludes_never_measured_client_from_pending_physical_assessments():
     assignment_repository = FakeAssignmentRepository()
     client_repository = FakeClientRepository()
 
@@ -353,19 +353,19 @@ def test_trainer_dashboard_excludes_never_measured_client_from_pending_measureme
     assignment_repository.seed_assignment(
         ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
     )
-    # No measurement seeded at all - client has never been measured.
+    # No physical_assessment seeded at all - client has never been measured.
 
     service = _make_service(
         assignment_repository=assignment_repository,
         client_repository=client_repository,
-        application_setting_service=_application_setting_service(measurement_overdue_days=14),
+        application_setting_service=_application_setting_service(physical_assessment_overdue_days=14),
     )
 
     dashboard = asyncio.run(
         service.get_trainer_dashboard(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
     )
 
-    assert dashboard.pending_measurements == 0
+    assert dashboard.pending_physical_assessments == 0
 
 
 def test_super_admin_dashboard_computes_all_fields():
@@ -381,13 +381,13 @@ def test_super_admin_dashboard_computes_all_fields():
     assert dashboard.total_trainers == 1
     assert dashboard.sessions_today == 2
     assert dashboard.upcoming_sessions_next_7_days == 3
-    assert dashboard.measurements_recorded_this_month == 1
+    assert dashboard.physical_assessments_recorded_this_month == 1
     assert dashboard.pending_check_ins == 1
     assert dashboard.clients_missing_check_ins_today == 1
     # client_a: measured recently -> not pending. client_b: never measured
     # -> counted under "missing", not double-counted as "pending".
-    assert dashboard.pending_measurements == 0
-    assert dashboard.clients_missing_measurements == 1
+    assert dashboard.pending_physical_assessments == 0
+    assert dashboard.clients_missing_physical_assessments == 1
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +399,7 @@ def _build_client_fixture():
     client_repository = FakeClientRepository()
     session_repository = FakeSessionRepository()
     check_in_repository = FakeCheckInRepository()
-    measurement_repository = FakeMeasurementRepository()
+    physical_assessment_repository = FakePhysicalAssessmentRepository()
     subscription_repository = FakeSubscriptionRepository()
 
     user_id = uuid.uuid4()
@@ -412,7 +412,7 @@ def _build_client_fixture():
         "client_repository": client_repository,
         "session_repository": session_repository,
         "check_in_repository": check_in_repository,
-        "measurement_repository": measurement_repository,
+        "physical_assessment_repository": physical_assessment_repository,
         "subscription_repository": subscription_repository,
         "client": client,
         "trainer_id": trainer_id,
@@ -457,7 +457,7 @@ def test_client_dashboard_counts_completed_and_expected_check_ins():
         client_repository=fixture["client_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
-        measurement_repository=fixture["measurement_repository"],
+        physical_assessment_repository=fixture["physical_assessment_repository"],
         subscription_repository=fixture["subscription_repository"],
     )
 
@@ -476,7 +476,7 @@ def test_client_dashboard_adherence_zero_when_no_expected_sessions():
         client_repository=fixture["client_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
-        measurement_repository=fixture["measurement_repository"],
+        physical_assessment_repository=fixture["physical_assessment_repository"],
         subscription_repository=fixture["subscription_repository"],
     )
 
@@ -487,24 +487,24 @@ def test_client_dashboard_adherence_zero_when_no_expected_sessions():
     assert dashboard.completed_check_ins == 0
     assert dashboard.expected_check_ins == 0
     assert dashboard.adherence_percentage == 0
-    assert dashboard.latest_measurement_date is None
-    assert dashboard.next_measurement_due_date is None
+    assert dashboard.latest_physical_assessment_date is None
+    assert dashboard.next_physical_assessment_due_date is None
 
 
-def test_client_dashboard_computes_measurement_due_date():
+def test_client_dashboard_computes_physical_assessment_due_date():
     fixture = _build_client_fixture()
     client = fixture["client"]
     recorded_at = datetime.now(timezone.utc) - timedelta(days=5)
-    fixture["measurement_repository"].seed(
-        _make_measurement(client.id, uuid.uuid4(), recorded_at=recorded_at)
+    fixture["physical_assessment_repository"].seed(
+        _make_physical_assessment(client.id, uuid.uuid4(), recorded_at=recorded_at)
     )
     service = _make_service(
         client_repository=fixture["client_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
-        measurement_repository=fixture["measurement_repository"],
+        physical_assessment_repository=fixture["physical_assessment_repository"],
         subscription_repository=fixture["subscription_repository"],
-        application_setting_service=_application_setting_service(measurement_overdue_days=14),
+        application_setting_service=_application_setting_service(physical_assessment_overdue_days=14),
     )
 
     dashboard = asyncio.run(
@@ -512,5 +512,5 @@ def test_client_dashboard_computes_measurement_due_date():
     )
 
     expected_latest = recorded_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
-    assert dashboard.latest_measurement_date == expected_latest
-    assert dashboard.next_measurement_due_date == expected_latest + timedelta(days=14)
+    assert dashboard.latest_physical_assessment_date == expected_latest
+    assert dashboard.next_physical_assessment_due_date == expected_latest + timedelta(days=14)

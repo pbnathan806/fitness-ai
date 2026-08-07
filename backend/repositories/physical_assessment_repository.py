@@ -8,51 +8,51 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from models.client import Client
-from models.measurement import Measurement
+from models.physical_assessment import PhysicalAssessment
 
 
 @dataclass(frozen=True)
-class LatestMeasurementRow:
-    """A client's most recent Measurement, joined with the client's name."""
+class LatestPhysicalAssessmentRow:
+    """A client's most recent PhysicalAssessment, joined with the client's name."""
 
     client_id: uuid.UUID
     client_name: str
     recorded_at: datetime
 
 
-class MeasurementRepository(ABC):
-    """Abstraction over measurement persistence, decoupling callers from SQLAlchemy.
+class PhysicalAssessmentRepository(ABC):
+    """Abstraction over physical assessment persistence, decoupling callers from SQLAlchemy.
 
-    Measurements are editable during the configured edit window (see
-    ApplicationSetting measurement_edit_window_days), so update() is
+    Physical assessments are editable during the configured edit window (see
+    ApplicationSetting physical_assessment_edit_window_days), so update() is
     supported. There is intentionally no delete(): historical records are
     always preserved once recorded.
     """
 
     @abstractmethod
-    async def create(self, measurement: Measurement) -> Measurement: ...
+    async def create(self, physical_assessment: PhysicalAssessment) -> PhysicalAssessment: ...
 
     @abstractmethod
-    async def update(self, measurement: Measurement) -> Measurement: ...
+    async def update(self, physical_assessment: PhysicalAssessment) -> PhysicalAssessment: ...
 
     @abstractmethod
-    async def get_by_id(self, measurement_id: uuid.UUID) -> Measurement | None: ...
+    async def get_by_id(self, physical_assessment_id: uuid.UUID) -> PhysicalAssessment | None: ...
 
     @abstractmethod
-    async def list_paginated(self, offset: int, limit: int) -> tuple[list[Measurement], int]: ...
+    async def list_paginated(self, offset: int, limit: int) -> tuple[list[PhysicalAssessment], int]: ...
 
     @abstractmethod
     async def list_for_client(
         self, client_id: uuid.UUID, offset: int, limit: int
-    ) -> tuple[list[Measurement], int]: ...
+    ) -> tuple[list[PhysicalAssessment], int]: ...
 
     @abstractmethod
     async def list_for_clients(
         self, client_ids: list[uuid.UUID], offset: int, limit: int
-    ) -> tuple[list[Measurement], int]: ...
+    ) -> tuple[list[PhysicalAssessment], int]: ...
 
     @abstractmethod
-    async def list_all_for_client(self, client_id: uuid.UUID) -> list[Measurement]: ...
+    async def list_all_for_client(self, client_id: uuid.UUID) -> list[PhysicalAssessment]: ...
 
     @abstractmethod
     async def count_in_range(self, start: datetime, end: datetime) -> int: ...
@@ -65,39 +65,39 @@ class MeasurementRepository(ABC):
     @abstractmethod
     async def list_latest_for_clients(
         self, client_ids: list[uuid.UUID] | None
-    ) -> list[LatestMeasurementRow]: ...
+    ) -> list[LatestPhysicalAssessmentRow]: ...
 
 
-class SQLAlchemyMeasurementRepository(MeasurementRepository):
+class SQLAlchemyPhysicalAssessmentRepository(PhysicalAssessmentRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, measurement: Measurement) -> Measurement:
-        self._session.add(measurement)
+    async def create(self, physical_assessment: PhysicalAssessment) -> PhysicalAssessment:
+        self._session.add(physical_assessment)
         await self._session.commit()
-        await self._session.refresh(measurement)
-        return measurement
+        await self._session.refresh(physical_assessment)
+        return physical_assessment
 
-    async def update(self, measurement: Measurement) -> Measurement:
+    async def update(self, physical_assessment: PhysicalAssessment) -> PhysicalAssessment:
         await self._session.commit()
-        await self._session.refresh(measurement)
-        return measurement
+        await self._session.refresh(physical_assessment)
+        return physical_assessment
 
-    async def get_by_id(self, measurement_id: uuid.UUID) -> Measurement | None:
+    async def get_by_id(self, physical_assessment_id: uuid.UUID) -> PhysicalAssessment | None:
         result = await self._session.execute(
-            select(Measurement).where(Measurement.id == measurement_id)
+            select(PhysicalAssessment).where(PhysicalAssessment.id == physical_assessment_id)
         )
         return result.scalar_one_or_none()
 
-    async def list_paginated(self, offset: int, limit: int) -> tuple[list[Measurement], int]:
+    async def list_paginated(self, offset: int, limit: int) -> tuple[list[PhysicalAssessment], int]:
         total_result = await self._session.execute(
-            select(func.count()).select_from(Measurement)
+            select(func.count()).select_from(PhysicalAssessment)
         )
         total = total_result.scalar_one()
 
         result = await self._session.execute(
-            select(Measurement)
-            .order_by(Measurement.recorded_at.desc())
+            select(PhysicalAssessment)
+            .order_by(PhysicalAssessment.recorded_at.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -105,18 +105,18 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
 
     async def list_for_client(
         self, client_id: uuid.UUID, offset: int, limit: int
-    ) -> tuple[list[Measurement], int]:
+    ) -> tuple[list[PhysicalAssessment], int]:
         total_result = await self._session.execute(
             select(func.count())
-            .select_from(Measurement)
-            .where(Measurement.client_id == client_id)
+            .select_from(PhysicalAssessment)
+            .where(PhysicalAssessment.client_id == client_id)
         )
         total = total_result.scalar_one()
 
         result = await self._session.execute(
-            select(Measurement)
-            .where(Measurement.client_id == client_id)
-            .order_by(Measurement.recorded_at.desc())
+            select(PhysicalAssessment)
+            .where(PhysicalAssessment.client_id == client_id)
+            .order_by(PhysicalAssessment.recorded_at.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -124,39 +124,39 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
 
     async def list_for_clients(
         self, client_ids: list[uuid.UUID], offset: int, limit: int
-    ) -> tuple[list[Measurement], int]:
+    ) -> tuple[list[PhysicalAssessment], int]:
         if not client_ids:
             return [], 0
 
         total_result = await self._session.execute(
             select(func.count())
-            .select_from(Measurement)
-            .where(Measurement.client_id.in_(client_ids))
+            .select_from(PhysicalAssessment)
+            .where(PhysicalAssessment.client_id.in_(client_ids))
         )
         total = total_result.scalar_one()
 
         result = await self._session.execute(
-            select(Measurement)
-            .where(Measurement.client_id.in_(client_ids))
-            .order_by(Measurement.recorded_at.desc())
+            select(PhysicalAssessment)
+            .where(PhysicalAssessment.client_id.in_(client_ids))
+            .order_by(PhysicalAssessment.recorded_at.desc())
             .offset(offset)
             .limit(limit)
         )
         return list(result.scalars().all()), total
 
-    async def list_all_for_client(self, client_id: uuid.UUID) -> list[Measurement]:
+    async def list_all_for_client(self, client_id: uuid.UUID) -> list[PhysicalAssessment]:
         result = await self._session.execute(
-            select(Measurement)
-            .where(Measurement.client_id == client_id)
-            .order_by(Measurement.recorded_at.desc())
+            select(PhysicalAssessment)
+            .where(PhysicalAssessment.client_id == client_id)
+            .order_by(PhysicalAssessment.recorded_at.desc())
         )
         return list(result.scalars().all())
 
     async def count_in_range(self, start: datetime, end: datetime) -> int:
         result = await self._session.execute(
             select(func.count())
-            .select_from(Measurement)
-            .where(Measurement.recorded_at >= start, Measurement.recorded_at < end)
+            .select_from(PhysicalAssessment)
+            .where(PhysicalAssessment.recorded_at >= start, PhysicalAssessment.recorded_at < end)
         )
         return result.scalar_one()
 
@@ -169,14 +169,14 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
         row_number = (
             func.row_number()
             .over(
-                partition_by=Measurement.client_id,
-                order_by=Measurement.recorded_at.desc(),
+                partition_by=PhysicalAssessment.client_id,
+                order_by=PhysicalAssessment.recorded_at.desc(),
             )
             .label("rn")
         )
-        query = select(Measurement.client_id, Measurement.recorded_at, row_number)
+        query = select(PhysicalAssessment.client_id, PhysicalAssessment.recorded_at, row_number)
         if client_ids is not None:
-            query = query.where(Measurement.client_id.in_(client_ids))
+            query = query.where(PhysicalAssessment.client_id.in_(client_ids))
         ranked = query.subquery()
 
         result = await self._session.execute(
@@ -186,21 +186,21 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
 
     async def list_latest_for_clients(
         self, client_ids: list[uuid.UUID] | None
-    ) -> list[LatestMeasurementRow]:
+    ) -> list[LatestPhysicalAssessmentRow]:
         if client_ids is not None and not client_ids:
             return []
 
         row_number = (
             func.row_number()
             .over(
-                partition_by=Measurement.client_id,
-                order_by=Measurement.recorded_at.desc(),
+                partition_by=PhysicalAssessment.client_id,
+                order_by=PhysicalAssessment.recorded_at.desc(),
             )
             .label("rn")
         )
-        query = select(Measurement.client_id, Measurement.recorded_at, row_number)
+        query = select(PhysicalAssessment.client_id, PhysicalAssessment.recorded_at, row_number)
         if client_ids is not None:
-            query = query.where(Measurement.client_id.in_(client_ids))
+            query = query.where(PhysicalAssessment.client_id.in_(client_ids))
         ranked = query.subquery()
 
         result = await self._session.execute(
@@ -210,7 +210,7 @@ class SQLAlchemyMeasurementRepository(MeasurementRepository):
             .order_by(ranked.c.recorded_at.asc())
         )
         return [
-            LatestMeasurementRow(
+            LatestPhysicalAssessmentRow(
                 client_id=client_id,
                 client_name=f"{first_name} {last_name}",
                 recorded_at=recorded_at,

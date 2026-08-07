@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, field_validator
 
 
-class MeasurementCreateRequest(BaseModel):
+class PhysicalAssessmentCreateRequest(BaseModel):
     client_id: uuid.UUID
     # Defaults to "now" (service layer) when omitted; must be timezone-aware
     # when provided so it can be safely converted to the client's local date.
@@ -28,7 +28,7 @@ class MeasurementCreateRequest(BaseModel):
         return value
 
 
-class MeasurementUpdateRequest(BaseModel):
+class PhysicalAssessmentUpdateRequest(BaseModel):
     weight_kg: float | None = None
     body_fat_percentage: float | None = None
     chest_cm: float | None = None
@@ -41,7 +41,7 @@ class MeasurementUpdateRequest(BaseModel):
     resting_heart_rate: int | None = None
 
 
-class MeasurementResponse(BaseModel):
+class PhysicalAssessmentResponse(BaseModel):
     id: uuid.UUID
     client_id: uuid.UUID
     weight_kg: float | None
@@ -54,21 +54,27 @@ class MeasurementResponse(BaseModel):
     left_thigh_cm: float | None
     right_thigh_cm: float | None
     resting_heart_rate: int | None
+    # Groundwork only - always null until a photo upload capability is
+    # built. Not present on the create/update request schemas below since
+    # there's no upload mechanism yet to populate them.
+    front_photo_url: str | None
+    back_photo_url: str | None
+    side_photo_url: str | None
     recorded_by: uuid.UUID
     recorded_at: datetime
     created_at: datetime
     updated_at: datetime
 
 
-class PaginatedMeasurementsResponse(BaseModel):
-    items: list[MeasurementResponse]
+class PaginatedPhysicalAssessmentsResponse(BaseModel):
+    items: list[PhysicalAssessmentResponse]
     page: int
     page_size: int
     total: int
     total_pages: int
 
 
-class LatestMeasurementResponse(BaseModel):
+class LatestPhysicalAssessmentResponse(BaseModel):
     weight_kg: float | None
     previous_weight_kg: float | None
     weight_change: float | None
@@ -102,8 +108,8 @@ class LatestMeasurementResponse(BaseModel):
     recorded_at: date | None
 
 
-class PendingMeasurementResponse(BaseModel):
+class PendingPhysicalAssessmentResponse(BaseModel):
     client_id: uuid.UUID
     client_name: str
-    last_measurement_date: date
+    last_physical_assessment_date: date
     days_overdue: int

@@ -14,39 +14,39 @@ from repositories.assignment_repository import (
     SQLAlchemyAssignmentRepository,
 )
 from repositories.client_repository import ClientRepository, SQLAlchemyClientRepository
-from repositories.measurement_repository import (
-    MeasurementRepository,
-    SQLAlchemyMeasurementRepository,
+from repositories.physical_assessment_repository import (
+    PhysicalAssessmentRepository,
+    SQLAlchemyPhysicalAssessmentRepository,
 )
-from schemas.measurement import (
-    LatestMeasurementResponse,
-    MeasurementCreateRequest,
-    MeasurementResponse,
-    MeasurementUpdateRequest,
-    PaginatedMeasurementsResponse,
-    PendingMeasurementResponse,
+from schemas.physical_assessment import (
+    LatestPhysicalAssessmentResponse,
+    PaginatedPhysicalAssessmentsResponse,
+    PendingPhysicalAssessmentResponse,
+    PhysicalAssessmentCreateRequest,
+    PhysicalAssessmentResponse,
+    PhysicalAssessmentUpdateRequest,
 )
 from services.application_setting_service import ApplicationSettingService
-from services.measurement_service import (
+from services.physical_assessment_service import (
     ClientNotFoundError,
     ForbiddenError,
-    MeasurementDetail,
-    MeasurementEditWindowExpiredError,
-    MeasurementFieldsRequiredError,
-    MeasurementNotFoundError,
-    MeasurementService,
-    PendingMeasurementDetail,
+    PendingPhysicalAssessmentDetail,
+    PhysicalAssessmentDetail,
+    PhysicalAssessmentEditWindowExpiredError,
+    PhysicalAssessmentFieldsRequiredError,
+    PhysicalAssessmentNotFoundError,
+    PhysicalAssessmentService,
     TrainerNotAssignedError,
     TrainerNotFoundError,
 )
 
-router = APIRouter(prefix="/api/v1/measurements", tags=["measurements"])
+router = APIRouter(prefix="/api/v1/physical-assessments", tags=["physical-assessments"])
 
 
-def get_measurement_repository(
+def get_physical_assessment_repository(
     session: AsyncSession = Depends(get_db),
-) -> MeasurementRepository:
-    return SQLAlchemyMeasurementRepository(session)
+) -> PhysicalAssessmentRepository:
+    return SQLAlchemyPhysicalAssessmentRepository(session)
 
 
 def get_client_repository(session: AsyncSession = Depends(get_db)) -> ClientRepository:
@@ -73,24 +73,24 @@ def get_application_setting_service(
     return ApplicationSettingService(application_setting_repository)
 
 
-def get_measurement_service(
-    measurement_repository: MeasurementRepository = Depends(get_measurement_repository),
+def get_physical_assessment_service(
+    physical_assessment_repository: PhysicalAssessmentRepository = Depends(get_physical_assessment_repository),
     client_repository: ClientRepository = Depends(get_client_repository),
     assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
     application_setting_service: ApplicationSettingService = Depends(
         get_application_setting_service
     ),
-) -> MeasurementService:
-    return MeasurementService(
-        measurement_repository,
+) -> PhysicalAssessmentService:
+    return PhysicalAssessmentService(
+        physical_assessment_repository,
         client_repository,
         assignment_repository,
         application_setting_service,
     )
 
 
-def _to_response(detail: MeasurementDetail) -> MeasurementResponse:
-    return MeasurementResponse(
+def _to_response(detail: PhysicalAssessmentDetail) -> PhysicalAssessmentResponse:
+    return PhysicalAssessmentResponse(
         id=detail.id,
         client_id=detail.client_id,
         weight_kg=detail.weight_kg,
@@ -103,6 +103,9 @@ def _to_response(detail: MeasurementDetail) -> MeasurementResponse:
         left_thigh_cm=detail.left_thigh_cm,
         right_thigh_cm=detail.right_thigh_cm,
         resting_heart_rate=detail.resting_heart_rate,
+        front_photo_url=detail.front_photo_url,
+        back_photo_url=detail.back_photo_url,
+        side_photo_url=detail.side_photo_url,
         recorded_by=detail.recorded_by,
         recorded_at=detail.recorded_at,
         created_at=detail.created_at,
@@ -110,23 +113,23 @@ def _to_response(detail: MeasurementDetail) -> MeasurementResponse:
     )
 
 
-def _to_pending_response(detail: PendingMeasurementDetail) -> PendingMeasurementResponse:
-    return PendingMeasurementResponse(
+def _to_pending_response(detail: PendingPhysicalAssessmentDetail) -> PendingPhysicalAssessmentResponse:
+    return PendingPhysicalAssessmentResponse(
         client_id=detail.client_id,
         client_name=detail.client_name,
-        last_measurement_date=detail.last_measurement_date,
+        last_physical_assessment_date=detail.last_physical_assessment_date,
         days_overdue=detail.days_overdue,
     )
 
 
-@router.post("", response_model=MeasurementResponse, status_code=status.HTTP_201_CREATED)
-async def create_measurement(
-    payload: MeasurementCreateRequest,
+@router.post("", response_model=PhysicalAssessmentResponse, status_code=status.HTTP_201_CREATED)
+async def create_physical_assessment(
+    payload: PhysicalAssessmentCreateRequest,
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> MeasurementResponse:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> PhysicalAssessmentResponse:
     try:
-        detail = await measurement_service.create_measurement(
+        detail = await physical_assessment_service.create_physical_assessment(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
             client_id=payload.client_id,
@@ -150,21 +153,21 @@ async def create_measurement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TrainerNotAssignedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except MeasurementFieldsRequiredError as exc:
+    except PhysicalAssessmentFieldsRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return _to_response(detail)
 
 
-@router.get("", response_model=PaginatedMeasurementsResponse, status_code=status.HTTP_200_OK)
-async def list_measurements(
+@router.get("", response_model=PaginatedPhysicalAssessmentsResponse, status_code=status.HTTP_200_OK)
+async def list_physical_assessments(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> PaginatedMeasurementsResponse:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> PaginatedPhysicalAssessmentsResponse:
     try:
-        result = await measurement_service.list_measurements(
+        result = await physical_assessment_service.list_physical_assessments(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
             page=page,
@@ -176,7 +179,7 @@ async def list_measurements(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     total_pages = (result.total + page_size - 1) // page_size if result.total else 0
-    return PaginatedMeasurementsResponse(
+    return PaginatedPhysicalAssessmentsResponse(
         items=[_to_response(detail) for detail in result.items],
         page=result.page,
         page_size=result.page_size,
@@ -186,14 +189,14 @@ async def list_measurements(
 
 
 @router.get(
-    "/pending", response_model=list[PendingMeasurementResponse], status_code=status.HTTP_200_OK
+    "/pending", response_model=list[PendingPhysicalAssessmentResponse], status_code=status.HTTP_200_OK
 )
-async def list_pending_measurements(
+async def list_pending_physical_assessments(
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> list[PendingMeasurementResponse]:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> list[PendingPhysicalAssessmentResponse]:
     try:
-        items = await measurement_service.list_pending_measurements(
+        items = await physical_assessment_service.list_pending_physical_assessments(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
         )
@@ -207,40 +210,40 @@ async def list_pending_measurements(
 
 @router.get(
     "/client/{client_id}/latest",
-    response_model=LatestMeasurementResponse,
+    response_model=LatestPhysicalAssessmentResponse,
     status_code=status.HTTP_200_OK,
 )
-async def get_latest_measurement(
+async def get_latest_physical_assessment(
     client_id: uuid.UUID,
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> LatestMeasurementResponse:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> LatestPhysicalAssessmentResponse:
     try:
-        detail = await measurement_service.get_latest_measurement(
+        detail = await physical_assessment_service.get_latest_physical_assessment(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
             client_id=client_id,
         )
     except ForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except (ClientNotFoundError, MeasurementNotFoundError) as exc:
+    except (ClientNotFoundError, PhysicalAssessmentNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    return LatestMeasurementResponse(**detail.__dict__)
+    return LatestPhysicalAssessmentResponse(**detail.__dict__)
 
 
 @router.get(
     "/client/{client_id}",
-    response_model=list[MeasurementResponse],
+    response_model=list[PhysicalAssessmentResponse],
     status_code=status.HTTP_200_OK,
 )
-async def get_client_measurements(
+async def get_client_physical_assessments(
     client_id: uuid.UUID,
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> list[MeasurementResponse]:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> list[PhysicalAssessmentResponse]:
     try:
-        items = await measurement_service.get_client_measurements(
+        items = await physical_assessment_service.get_client_physical_assessments(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
             client_id=client_id,
@@ -253,51 +256,51 @@ async def get_client_measurements(
     return [_to_response(item) for item in items]
 
 
-@router.get("/{measurement_id}", response_model=MeasurementResponse, status_code=status.HTTP_200_OK)
-async def get_measurement(
-    measurement_id: uuid.UUID,
+@router.get("/{physical_assessment_id}", response_model=PhysicalAssessmentResponse, status_code=status.HTTP_200_OK)
+async def get_physical_assessment(
+    physical_assessment_id: uuid.UUID,
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> MeasurementResponse:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> PhysicalAssessmentResponse:
     try:
-        detail = await measurement_service.get_measurement(
+        detail = await physical_assessment_service.get_physical_assessment(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
-            measurement_id=measurement_id,
+            physical_assessment_id=physical_assessment_id,
         )
     except ForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except MeasurementNotFoundError as exc:
+    except PhysicalAssessmentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return _to_response(detail)
 
 
-@router.patch("/{measurement_id}", response_model=MeasurementResponse, status_code=status.HTTP_200_OK)
-async def update_measurement(
-    measurement_id: uuid.UUID,
-    payload: MeasurementUpdateRequest,
+@router.patch("/{physical_assessment_id}", response_model=PhysicalAssessmentResponse, status_code=status.HTTP_200_OK)
+async def update_physical_assessment(
+    physical_assessment_id: uuid.UUID,
+    payload: PhysicalAssessmentUpdateRequest,
     current_user: CurrentUser = Depends(get_current_user),
-    measurement_service: MeasurementService = Depends(get_measurement_service),
-) -> MeasurementResponse:
+    physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
+) -> PhysicalAssessmentResponse:
     try:
-        detail = await measurement_service.update_measurement(
+        detail = await physical_assessment_service.update_physical_assessment(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
-            measurement_id=measurement_id,
+            physical_assessment_id=physical_assessment_id,
             values=payload.model_dump(exclude_unset=True),
         )
     except ForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except MeasurementNotFoundError as exc:
+    except PhysicalAssessmentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TrainerNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TrainerNotAssignedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except MeasurementFieldsRequiredError as exc:
+    except PhysicalAssessmentFieldsRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except MeasurementEditWindowExpiredError as exc:
+    except PhysicalAssessmentEditWindowExpiredError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return _to_response(detail)

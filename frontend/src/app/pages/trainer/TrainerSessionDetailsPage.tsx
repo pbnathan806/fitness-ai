@@ -11,7 +11,7 @@ import { SessionEditForm } from "@/app/pages/sessions/components/SessionEditForm
 import { SessionAttendanceForm } from "@/app/pages/sessions/components/SessionAttendanceForm"
 import { SessionNotesForm } from "@/app/pages/sessions/components/SessionNotesForm"
 import { SessionCheckInCard } from "@/app/pages/sessions/components/SessionCheckInCard"
-import { clientService } from "@/services/clientService"
+import { assignmentService } from "@/services/assignmentService"
 import { trainerService } from "@/services/trainerService"
 import { sessionService } from "@/services/sessionService"
 import { getApiErrorMessage } from "@/lib/errors"
@@ -31,10 +31,12 @@ export function TrainerSessionDetailsPage() {
     enabled: !!id,
   })
 
-  const clientQuery = useQuery({
-    queryKey: ["clients", sessionQuery.data?.client_id],
-    queryFn: () => clientService.getClient(sessionQuery.data!.client_id),
-    enabled: !!sessionQuery.data?.client_id,
+  // Resolved via the trainer's own assigned-clients roster (name only, no
+  // PII) rather than GET /clients/{id} - trainers must not see a client's
+  // email or phone number anywhere in the trainer-facing UI.
+  const clientsQuery = useQuery({
+    queryKey: ["assignments", "my-clients"],
+    queryFn: assignmentService.getMyClients,
   })
 
   const trainerQuery = useQuery({
@@ -90,7 +92,10 @@ export function TrainerSessionDetailsPage() {
   }
 
   const session = sessionQuery.data
-  const clientName = clientQuery.data ? `${clientQuery.data.first_name} ${clientQuery.data.last_name}` : `Client #${session.client_id.slice(0, 8)}`
+  const assignedClient = clientsQuery.data?.find((c) => c.client_id === session.client_id)
+  const clientName = assignedClient
+    ? `${assignedClient.first_name} ${assignedClient.last_name}`
+    : `Client #${session.client_id.slice(0, 8)}`
   const trainerName = trainerQuery.data
     ? `${trainerQuery.data.first_name ?? ""} ${trainerQuery.data.last_name ?? ""}`.trim() || trainerQuery.data.email
     : `Trainer #${session.trainer_id.slice(0, 8)}`
@@ -103,7 +108,7 @@ export function TrainerSessionDetailsPage() {
       </Button>
 
       <div>
-        <h1 className="text-xl font-semibold">{clientQuery.isLoading ? "Loading..." : clientName}</h1>
+        <h1 className="text-xl font-semibold">{clientsQuery.isLoading ? "Loading..." : clientName}</h1>
         <p className="text-sm text-muted-foreground">Session details</p>
       </div>
 

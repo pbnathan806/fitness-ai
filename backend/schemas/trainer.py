@@ -114,7 +114,7 @@ class TrainerSummaryResponse(BaseModel):
     sessions_this_week: int
     completed_sessions_this_month: int
     pending_check_ins: int
-    pending_measurements: int
+    pending_physical_assessments: int
 
 
 class TrainerPerformanceResponse(BaseModel):

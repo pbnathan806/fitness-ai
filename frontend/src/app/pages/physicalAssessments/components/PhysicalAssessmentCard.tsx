@@ -7,16 +7,16 @@ import { Button } from "@/components/ui/button"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
 import { LoadingSpinner } from "@/components/common/LoadingSpinner"
-import { MeasurementForm } from "@/app/pages/measurements/components/MeasurementForm"
-import { measurementService } from "@/services/measurementService"
+import { PhysicalAssessmentForm } from "@/app/pages/physicalAssessments/components/PhysicalAssessmentForm"
+import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDateTime } from "@/lib/format"
-import type { Measurement, MeasurementCreateInput, MeasurementUpdateInput } from "@/types/measurement"
+import type { PhysicalAssessment, PhysicalAssessmentCreateInput, PhysicalAssessmentUpdateInput } from "@/types/physicalAssessment"
 
 const EDIT_WINDOW_EXPIRED_MESSAGE =
-  "This measurement can no longer be modified. The configured edit window has expired."
+  "This physical assessment can no longer be modified. The configured edit window has expired."
 
-const FIELDS: { key: keyof Measurement; label: string; unit: string }[] = [
+const FIELDS: { key: keyof PhysicalAssessment; label: string; unit: string }[] = [
   { key: "weight_kg", label: "Weight", unit: "kg" },
   { key: "body_fat_percentage", label: "Body Fat", unit: "%" },
   { key: "chest_cm", label: "Chest", unit: "cm" },
@@ -29,20 +29,20 @@ const FIELDS: { key: keyof Measurement; label: string; unit: string }[] = [
   { key: "resting_heart_rate", label: "Resting Heart Rate", unit: "bpm" },
 ]
 
-interface MeasurementCardProps {
+interface PhysicalAssessmentCardProps {
   clientId: string
   /** Auto-opens the Add or Edit form on mount, e.g. when arriving from the
-   * Pending Measurements page's row actions. */
+   * Pending Physical Assessments page's row actions. */
   initialAction?: "add" | "edit" | null
 }
 
-/** Latest-measurement section of a client's page - shows the most recent
- * recorded values, when they were last updated, and inline Add/Edit forms.
- * The edit window's length is an application setting only readable
+/** Latest-physical-assessment section of a client's page - shows the most
+ * recent recorded values, when they were last updated, and inline Add/Edit
+ * forms. The edit window's length is an application setting only readable
  * server-side, so rather than predicting expiry client-side, edits are
  * always attempted and a 409 flips the card into a locked state (mirrors
  * SessionCheckInCard's handling of the same pattern for check-ins). */
-export function MeasurementCard({ clientId, initialAction }: MeasurementCardProps) {
+export function PhysicalAssessmentCard({ clientId, initialAction }: PhysicalAssessmentCardProps) {
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<"view" | "add" | "edit">(
     initialAction === "add" ? "add" : initialAction === "edit" ? "edit" : "view",
@@ -50,34 +50,35 @@ export function MeasurementCard({ clientId, initialAction }: MeasurementCardProp
   const [editWindowExpired, setEditWindowExpired] = useState(false)
 
   const historyQuery = useQuery({
-    queryKey: ["measurements", "client", clientId],
-    queryFn: () => measurementService.getClientMeasurements(clientId),
+    queryKey: ["physical-assessments", "client", clientId],
+    queryFn: () => physicalAssessmentService.getClientPhysicalAssessments(clientId),
   })
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ["measurements", "client", clientId] })
+    queryClient.invalidateQueries({ queryKey: ["physical-assessments", "client", clientId] })
   }
 
   const createMutation = useMutation({
-    mutationFn: (values: MeasurementUpdateInput) =>
-      measurementService.create({
+    mutationFn: (values: PhysicalAssessmentUpdateInput) =>
+      physicalAssessmentService.create({
         client_id: clientId,
         recorded_at: null,
         ...values,
-      } as MeasurementCreateInput),
+      } as PhysicalAssessmentCreateInput),
     onSuccess: () => {
       invalidate()
       setMode("view")
-      toast.success("Measurement recorded.")
+      toast.success("Physical assessment recorded.")
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: (values: MeasurementUpdateInput) => measurementService.update(historyQuery.data![0].id, values),
+    mutationFn: (values: PhysicalAssessmentUpdateInput) =>
+      physicalAssessmentService.update(historyQuery.data![0].id, values),
     onSuccess: () => {
       invalidate()
       setMode("view")
-      toast.success("Measurement updated.")
+      toast.success("Physical assessment updated.")
     },
     onError: (error) => {
       if (getApiErrorMessage(error) === EDIT_WINDOW_EXPIRED_MESSAGE) {
@@ -88,13 +89,13 @@ export function MeasurementCard({ clientId, initialAction }: MeasurementCardProp
   })
 
   if (historyQuery.isLoading) {
-    return <LoadingSpinner label="Loading measurements..." className="py-8" />
+    return <LoadingSpinner label="Loading physical assessments..." className="py-8" />
   }
 
   if (historyQuery.isError) {
     return (
       <ErrorState
-        title="Unable to load measurements"
+        title="Unable to load physical assessments"
         message={getApiErrorMessage(historyQuery.error)}
         onRetry={() => historyQuery.refetch()}
       />
@@ -111,16 +112,16 @@ export function MeasurementCard({ clientId, initialAction }: MeasurementCardProp
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
             <Ruler className="size-4 text-muted-foreground" aria-hidden="true" />
-            Latest Measurements
+            Latest Physical Assessment
           </CardTitle>
           {latest && effectiveMode === "view" && (
             <Button size="sm" onClick={() => setMode("add")}>
-              Add Measurement
+              Add Physical Assessment
             </Button>
           )}
         </div>
         <CardDescription>
-          {latest ? `Last updated ${formatDateTime(latest.recorded_at)}` : "No measurements recorded yet."}
+          {latest ? `Last updated ${formatDateTime(latest.recorded_at)}` : "No physical assessments recorded yet."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -141,7 +142,7 @@ export function MeasurementCard({ clientId, initialAction }: MeasurementCardProp
               <ErrorState title="Edit window expired" message={EDIT_WINDOW_EXPIRED_MESSAGE} />
             ) : (
               <Button variant="outline" size="sm" onClick={() => setMode("edit")}>
-                Edit Measurement
+                Edit Physical Assessment
               </Button>
             )}
           </>
@@ -150,27 +151,27 @@ export function MeasurementCard({ clientId, initialAction }: MeasurementCardProp
         {effectiveMode === "view" && !latest && (
           <EmptyState
             icon={Ruler}
-            message="No measurements recorded yet."
+            message="No physical assessments recorded yet."
             action={
               <Button size="sm" onClick={() => setMode("add")}>
-                Add Measurement
+                Add Physical Assessment
               </Button>
             }
           />
         )}
 
         {effectiveMode === "add" && (
-          <MeasurementForm
+          <PhysicalAssessmentForm
             onSubmit={(values) => createMutation.mutate(values)}
             isSubmitting={createMutation.isPending}
             submitErrorMessage={createMutation.isError ? getApiErrorMessage(createMutation.error) : null}
-            submitLabel="Save Measurement"
+            submitLabel="Save Physical Assessment"
           />
         )}
 
         {effectiveMode === "edit" && latest && (
-          <MeasurementForm
-            measurement={latest}
+          <PhysicalAssessmentForm
+            physicalAssessment={latest}
             onSubmit={(values) => updateMutation.mutate(values)}
             isSubmitting={updateMutation.isPending}
             submitErrorMessage={

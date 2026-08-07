@@ -1,11 +1,13 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { ErrorState } from "@/components/common/ErrorState"
-import type { Measurement, MeasurementUpdateInput } from "@/types/measurement"
+import type { PhysicalAssessment, PhysicalAssessmentUpdateInput } from "@/types/physicalAssessment"
 
 const optionalNumber = (min: number, max: number) =>
   z.preprocess(
@@ -35,15 +37,15 @@ const schema = z.object({
 // Same raw-string-in / resolved-number-out split as CheckInForm: native
 // <input type="number"> always hands react-hook-form a string, and zod's
 // preprocess only turns it into a number in the resolved output.
-type MeasurementFormInput = z.input<typeof schema>
-type MeasurementFormOutput = z.output<typeof schema>
+type PhysicalAssessmentFormInput = z.input<typeof schema>
+type PhysicalAssessmentFormOutput = z.output<typeof schema>
 
 function toInputValue(value: number | null | undefined): string {
   return value === null || value === undefined ? "" : String(value)
 }
 
 interface FieldSpec {
-  name: keyof MeasurementFormOutput
+  name: keyof PhysicalAssessmentFormOutput
   label: string
   step: string
   min: number
@@ -63,47 +65,58 @@ const FIELDS: FieldSpec[] = [
   { name: "resting_heart_rate", label: "Resting Heart Rate (bpm)", step: "1", min: 20, max: 250 },
 ]
 
-interface MeasurementFormProps {
-  /** Existing measurement to prefill from when editing; omit for a fresh submission. */
-  measurement?: Measurement
-  onSubmit: (values: MeasurementUpdateInput) => void
+// Groundwork only - see models/physical_assessment.py on the backend. These
+// slots are visible but inert: no upload mechanism exists yet, so they're
+// deliberately kept out of the zod schema and out of handleFormSubmit's
+// payload. Not rendered for CLIENT at all - this form is never mounted on
+// the client-facing (read-only) Physical Assessments page.
+const PHOTO_SLOTS = [
+  { key: "front", label: "Front Photo" },
+  { key: "back", label: "Back Photo" },
+  { key: "side", label: "Side Photo" },
+] as const
+
+interface PhysicalAssessmentFormProps {
+  /** Existing physical assessment to prefill from when editing; omit for a fresh submission. */
+  physicalAssessment?: PhysicalAssessment
+  onSubmit: (values: PhysicalAssessmentUpdateInput) => void
   isSubmitting: boolean
   submitErrorMessage?: string | null
   submitLabel: string
 }
 
 /** Shared create/edit form for the ten body-measurement fields - used for
- * both POST /measurements (Add) and PATCH /measurements/{id} (Edit). Every
- * field is optional, but the backend rejects a payload left with none of
- * them populated. */
-export function MeasurementForm({
-  measurement,
+ * both POST /physical-assessments (Add) and PATCH /physical-assessments/{id}
+ * (Edit). Every field is optional, but the backend rejects a payload left
+ * with none of them populated. */
+export function PhysicalAssessmentForm({
+  physicalAssessment,
   onSubmit,
   isSubmitting,
   submitErrorMessage,
   submitLabel,
-}: MeasurementFormProps) {
+}: PhysicalAssessmentFormProps) {
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<MeasurementFormInput, unknown, MeasurementFormOutput>({
+  } = useForm<PhysicalAssessmentFormInput, unknown, PhysicalAssessmentFormOutput>({
     resolver: zodResolver(schema),
     values: {
-      weight_kg: toInputValue(measurement?.weight_kg),
-      body_fat_percentage: toInputValue(measurement?.body_fat_percentage),
-      chest_cm: toInputValue(measurement?.chest_cm),
-      waist_cm: toInputValue(measurement?.waist_cm),
-      hips_cm: toInputValue(measurement?.hips_cm),
-      left_arm_cm: toInputValue(measurement?.left_arm_cm),
-      right_arm_cm: toInputValue(measurement?.right_arm_cm),
-      left_thigh_cm: toInputValue(measurement?.left_thigh_cm),
-      right_thigh_cm: toInputValue(measurement?.right_thigh_cm),
-      resting_heart_rate: toInputValue(measurement?.resting_heart_rate),
+      weight_kg: toInputValue(physicalAssessment?.weight_kg),
+      body_fat_percentage: toInputValue(physicalAssessment?.body_fat_percentage),
+      chest_cm: toInputValue(physicalAssessment?.chest_cm),
+      waist_cm: toInputValue(physicalAssessment?.waist_cm),
+      hips_cm: toInputValue(physicalAssessment?.hips_cm),
+      left_arm_cm: toInputValue(physicalAssessment?.left_arm_cm),
+      right_arm_cm: toInputValue(physicalAssessment?.right_arm_cm),
+      left_thigh_cm: toInputValue(physicalAssessment?.left_thigh_cm),
+      right_thigh_cm: toInputValue(physicalAssessment?.right_thigh_cm),
+      resting_heart_rate: toInputValue(physicalAssessment?.resting_heart_rate),
     },
   })
 
-  function handleFormSubmit(values: MeasurementFormOutput) {
+  function handleFormSubmit(values: PhysicalAssessmentFormOutput) {
     onSubmit({
       weight_kg: values.weight_kg ?? null,
       body_fat_percentage: values.body_fat_percentage ?? null,
@@ -138,7 +151,28 @@ export function MeasurementForm({
         ))}
       </div>
 
-      {submitErrorMessage && <ErrorState title="Couldn't save measurement" message={submitErrorMessage} />}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium text-foreground">Photos</Label>
+          <Badge variant="secondary">Coming soon</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Optional front, back, and side progress photos. Uploading isn't available yet.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {PHOTO_SLOTS.map((slot) => (
+            <div key={slot.key} className="space-y-2">
+              <Label htmlFor={`photo-${slot.key}`} className="text-muted-foreground">
+                <Camera className="size-3.5" aria-hidden="true" />
+                {slot.label}
+              </Label>
+              <Input id={`photo-${slot.key}`} type="file" accept="image/*" disabled />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {submitErrorMessage && <ErrorState title="Couldn't save physical assessment" message={submitErrorMessage} />}
 
       <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
         {isSubmitting ? "Saving..." : submitLabel}

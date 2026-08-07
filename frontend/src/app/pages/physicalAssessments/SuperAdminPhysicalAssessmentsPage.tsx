@@ -9,42 +9,43 @@ import { Select } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
-import { MeasurementForm } from "@/app/pages/measurements/components/MeasurementForm"
+import { PhysicalAssessmentForm } from "@/app/pages/physicalAssessments/components/PhysicalAssessmentForm"
 import { clientService } from "@/services/clientService"
-import { measurementService } from "@/services/measurementService"
+import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate } from "@/lib/format"
-import type { Measurement, MeasurementCreateInput, MeasurementUpdateInput } from "@/types/measurement"
+import type { PhysicalAssessment, PhysicalAssessmentCreateInput, PhysicalAssessmentUpdateInput } from "@/types/physicalAssessment"
 
 const PAGE_SIZE = 20
 
 const EDIT_WINDOW_EXPIRED_MESSAGE =
-  "This measurement can no longer be modified. The configured edit window has expired."
+  "This physical assessment can no longer be modified. The configured edit window has expired."
 
-/** SUPER_ADMIN oversight over every recorded measurement: view all
+/** SUPER_ADMIN oversight over every recorded physical assessment: view all
  * (paginated), filter down to one client's full history, and edit any
  * record regardless of who recorded it (see backend
- * MeasurementService.update_measurement - SUPER_ADMIN may edit any
- * measurement, unlike TRAINER who is restricted to assigned clients). */
-export function SuperAdminMeasurementsPage() {
+ * PhysicalAssessmentService.update_physical_assessment - SUPER_ADMIN may
+ * edit any physical assessment, unlike TRAINER who is restricted to
+ * assigned clients). */
+export function SuperAdminPhysicalAssessmentsPage() {
   const queryClient = useQueryClient()
   const [clientFilter, setClientFilter] = useState("")
   const [page, setPage] = useState(1)
-  const [editingMeasurement, setEditingMeasurement] = useState<Measurement | null>(null)
+  const [editingPhysicalAssessment, setEditingPhysicalAssessment] = useState<PhysicalAssessment | null>(null)
   const [editWindowExpired, setEditWindowExpired] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
 
   const clientsQuery = useQuery({ queryKey: ["clients", "all"], queryFn: clientService.listAllClients })
 
   const listQuery = useQuery({
-    queryKey: ["measurements", "list", page],
-    queryFn: () => measurementService.list(page, PAGE_SIZE),
+    queryKey: ["physical-assessments", "list", page],
+    queryFn: () => physicalAssessmentService.list(page, PAGE_SIZE),
     enabled: clientFilter === "",
   })
 
   const historyQuery = useQuery({
-    queryKey: ["measurements", "client", clientFilter],
-    queryFn: () => measurementService.getClientMeasurements(clientFilter),
+    queryKey: ["physical-assessments", "client", clientFilter],
+    queryFn: () => physicalAssessmentService.getClientPhysicalAssessments(clientFilter),
     enabled: clientFilter !== "",
   })
 
@@ -58,38 +59,38 @@ export function SuperAdminMeasurementsPage() {
 
   function invalidateActiveQuery() {
     if (clientFilter === "") {
-      queryClient.invalidateQueries({ queryKey: ["measurements", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["physical-assessments", "list"] })
     } else {
-      queryClient.invalidateQueries({ queryKey: ["measurements", "client", clientFilter] })
+      queryClient.invalidateQueries({ queryKey: ["physical-assessments", "client", clientFilter] })
     }
   }
 
   const createMutation = useMutation({
-    mutationFn: (values: MeasurementUpdateInput) =>
-      measurementService.create({
+    mutationFn: (values: PhysicalAssessmentUpdateInput) =>
+      physicalAssessmentService.create({
         client_id: clientFilter,
         recorded_at: null,
         ...values,
-      } as MeasurementCreateInput),
+      } as PhysicalAssessmentCreateInput),
     onSuccess: () => {
       invalidateActiveQuery()
       setIsAdding(false)
-      toast.success("Measurement recorded.")
+      toast.success("Physical assessment recorded.")
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: MeasurementUpdateInput }) =>
-      measurementService.update(id, values),
+    mutationFn: ({ id, values }: { id: string; values: PhysicalAssessmentUpdateInput }) =>
+      physicalAssessmentService.update(id, values),
     onSuccess: () => {
       invalidateActiveQuery()
-      setEditingMeasurement(null)
-      toast.success("Measurement updated.")
+      setEditingPhysicalAssessment(null)
+      toast.success("Physical assessment updated.")
     },
     onError: (error) => {
       if (getApiErrorMessage(error) === EDIT_WINDOW_EXPIRED_MESSAGE) {
         setEditWindowExpired(true)
-        setEditingMeasurement(null)
+        setEditingPhysicalAssessment(null)
       }
     },
   })
@@ -101,22 +102,22 @@ export function SuperAdminMeasurementsPage() {
   const refetchActive = () => (clientFilter === "" ? listQuery.refetch() : historyQuery.refetch())
   const totalPages = clientFilter === "" ? (listQuery.data?.total_pages ?? 1) : 1
 
-  function startEdit(measurement: Measurement) {
+  function startEdit(physicalAssessment: PhysicalAssessment) {
     setEditWindowExpired(false)
     setIsAdding(false)
-    setEditingMeasurement(measurement)
+    setEditingPhysicalAssessment(physicalAssessment)
   }
 
   function startAdd() {
-    setEditingMeasurement(null)
+    setEditingPhysicalAssessment(null)
     setIsAdding(true)
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">Measurements</h1>
-        <p className="text-sm text-muted-foreground">View every recorded measurement, or filter to one client's full history.</p>
+        <h1 className="text-xl font-semibold">Physical Assessments</h1>
+        <p className="text-sm text-muted-foreground">View every recorded physical assessment, or filter to one client's full history.</p>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -129,7 +130,7 @@ export function SuperAdminMeasurementsPage() {
             onChange={(e) => {
               setClientFilter(e.target.value)
               setPage(1)
-              setEditingMeasurement(null)
+              setEditingPhysicalAssessment(null)
               setIsAdding(false)
             }}
           >
@@ -147,7 +148,7 @@ export function SuperAdminMeasurementsPage() {
           title={clientFilter === "" ? "Select a client first" : undefined}
         >
           <Plus className="size-4" />
-          Add Measurement
+          Add Physical Assessment
         </Button>
       </div>
 
@@ -155,40 +156,40 @@ export function SuperAdminMeasurementsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
-              <CardTitle>Add Measurement — {clientNameById.get(clientFilter) ?? "Client"}</CardTitle>
+              <CardTitle>Add Physical Assessment — {clientNameById.get(clientFilter) ?? "Client"}</CardTitle>
               <Button variant="ghost" size="icon-sm" aria-label="Cancel add" onClick={() => setIsAdding(false)}>
                 <X className="size-4" />
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <MeasurementForm
+            <PhysicalAssessmentForm
               onSubmit={(values) => createMutation.mutate(values)}
               isSubmitting={createMutation.isPending}
               submitErrorMessage={createMutation.isError ? getApiErrorMessage(createMutation.error) : null}
-              submitLabel="Save Measurement"
+              submitLabel="Save Physical Assessment"
             />
           </CardContent>
         </Card>
       )}
 
-      {editingMeasurement && (
+      {editingPhysicalAssessment && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
               <CardTitle>
-                Edit Measurement — {clientNameById.get(editingMeasurement.client_id) ?? "Unknown Client"}
+                Edit Physical Assessment — {clientNameById.get(editingPhysicalAssessment.client_id) ?? "Unknown Client"}
               </CardTitle>
-              <Button variant="ghost" size="icon-sm" aria-label="Cancel edit" onClick={() => setEditingMeasurement(null)}>
+              <Button variant="ghost" size="icon-sm" aria-label="Cancel edit" onClick={() => setEditingPhysicalAssessment(null)}>
                 <X className="size-4" />
               </Button>
             </div>
-            <CardDescription>Recorded {formatDate(editingMeasurement.recorded_at)}</CardDescription>
+            <CardDescription>Recorded {formatDate(editingPhysicalAssessment.recorded_at)}</CardDescription>
           </CardHeader>
           <CardContent>
-            <MeasurementForm
-              measurement={editingMeasurement}
-              onSubmit={(values) => updateMutation.mutate({ id: editingMeasurement.id, values })}
+            <PhysicalAssessmentForm
+              physicalAssessment={editingPhysicalAssessment}
+              onSubmit={(values) => updateMutation.mutate({ id: editingPhysicalAssessment.id, values })}
               isSubmitting={updateMutation.isPending}
               submitErrorMessage={
                 updateMutation.isError && getApiErrorMessage(updateMutation.error) !== EDIT_WINDOW_EXPIRED_MESSAGE
@@ -209,7 +210,7 @@ export function SuperAdminMeasurementsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Ruler className="size-4 text-muted-foreground" aria-hidden="true" />
-            {clientFilter === "" ? "All Measurements" : `History for ${clientNameById.get(clientFilter) ?? "Client"}`}
+            {clientFilter === "" ? "All Physical Assessments" : `History for ${clientNameById.get(clientFilter) ?? "Client"}`}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -223,13 +224,13 @@ export function SuperAdminMeasurementsPage() {
 
           {!isLoading && isError && (
             <ErrorState
-              message={getApiErrorMessage(activeError, "Unable to load measurements.")}
+              message={getApiErrorMessage(activeError, "Unable to load physical assessments.")}
               onRetry={refetchActive}
             />
           )}
 
           {!isLoading && !isError && rows.length === 0 && (
-            <EmptyState icon={Ruler} message="No measurements found." />
+            <EmptyState icon={Ruler} message="No physical assessments found." />
           )}
 
           {!isLoading && !isError && rows.length > 0 && (
@@ -250,32 +251,32 @@ export function SuperAdminMeasurementsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {rows.map((measurement) => (
-                      <tr key={measurement.id} className="hover:bg-muted/30">
+                    {rows.map((physicalAssessment) => (
+                      <tr key={physicalAssessment.id} className="hover:bg-muted/30">
                         {clientFilter === "" && (
                           <td className="max-w-[200px] truncate px-3 py-2.5 font-medium">
-                            {clientNameById.get(measurement.client_id) ?? `Client #${measurement.client_id.slice(0, 8)}`}
+                            {clientNameById.get(physicalAssessment.client_id) ?? `Client #${physicalAssessment.client_id.slice(0, 8)}`}
                           </td>
                         )}
-                        <td className="px-3 py-2.5 whitespace-nowrap">{formatDate(measurement.recorded_at)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{formatDate(physicalAssessment.recorded_at)}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.weight_kg != null ? `${measurement.weight_kg} kg` : "—"}
+                          {physicalAssessment.weight_kg != null ? `${physicalAssessment.weight_kg} kg` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.body_fat_percentage != null ? `${measurement.body_fat_percentage} %` : "—"}
+                          {physicalAssessment.body_fat_percentage != null ? `${physicalAssessment.body_fat_percentage} %` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.waist_cm != null ? `${measurement.waist_cm} cm` : "—"}
+                          {physicalAssessment.waist_cm != null ? `${physicalAssessment.waist_cm} cm` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.chest_cm != null ? `${measurement.chest_cm} cm` : "—"}
+                          {physicalAssessment.chest_cm != null ? `${physicalAssessment.chest_cm} cm` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="Edit measurement"
-                            onClick={() => startEdit(measurement)}
+                            aria-label="Edit physical assessment"
+                            onClick={() => startEdit(physicalAssessment)}
                           >
                             <Pencil className="size-4" />
                           </Button>

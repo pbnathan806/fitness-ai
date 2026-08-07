@@ -7,74 +7,81 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
 import { LoadingSpinner } from "@/components/common/LoadingSpinner"
-import { MeasurementCard } from "@/app/pages/measurements/components/MeasurementCard"
-import { clientService } from "@/services/clientService"
-import { measurementService } from "@/services/measurementService"
+import { PhysicalAssessmentCard } from "@/app/pages/physicalAssessments/components/PhysicalAssessmentCard"
+import { assignmentService } from "@/services/assignmentService"
+import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate } from "@/lib/format"
 
-/** Trainer-facing client measurements view: latest measurement (with inline
- * Add/Edit) plus full history. Reached from the Measurements page's Pending
- * tab row links, which pass ?action=add or ?action=edit to auto-open the
- * right form on arrival. */
-export function TrainerClientMeasurementsPage() {
+/** Trainer-facing client physical assessments view: latest physical
+ * assessment (with inline Add/Edit) plus full history. Reached from the
+ * Physical Assessments page's Pending tab row links, which pass
+ * ?action=add or ?action=edit to auto-open the right form on arrival.
+ * Client identity is resolved via the trainer's own assigned-clients
+ * roster (name only, no PII) rather than GET /clients/{id} - trainers must
+ * not see a client's email or phone number anywhere in the trainer-facing
+ * UI. */
+export function TrainerClientPhysicalAssessmentsPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const action = searchParams.get("action")
   const initialAction = action === "add" || action === "edit" ? action : null
 
-  const clientQuery = useQuery({
-    queryKey: ["clients", id],
-    queryFn: () => clientService.getClient(id!),
-    enabled: !!id,
+  const clientsQuery = useQuery({
+    queryKey: ["assignments", "my-clients"],
+    queryFn: assignmentService.getMyClients,
   })
 
   const historyQuery = useQuery({
-    queryKey: ["measurements", "client", id],
-    queryFn: () => measurementService.getClientMeasurements(id!),
+    queryKey: ["physical-assessments", "client", id],
+    queryFn: () => physicalAssessmentService.getClientPhysicalAssessments(id!),
     enabled: !!id,
   })
 
-  if (clientQuery.isLoading) {
+  if (clientsQuery.isLoading) {
     return <LoadingSpinner label="Loading client..." className="py-16" />
   }
 
-  if (clientQuery.isError || !clientQuery.data) {
+  const client = clientsQuery.data?.find((c) => c.client_id === id)
+
+  if (clientsQuery.isError || !client) {
     return (
       <ErrorState
         title="Unable to load client"
-        message={getApiErrorMessage(clientQuery.error, "This client could not be found.")}
-        onRetry={() => clientQuery.refetch()}
+        message={
+          clientsQuery.isError
+            ? getApiErrorMessage(clientsQuery.error)
+            : "This client is not assigned to you."
+        }
+        onRetry={() => clientsQuery.refetch()}
       />
     )
   }
 
-  const client = clientQuery.data
   const history = historyQuery.data ?? []
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" size="sm" render={<Link to="/trainer/measurements" />} nativeButton={false}>
+      <Button variant="ghost" size="sm" render={<Link to="/trainer/physical-assessments" />} nativeButton={false}>
         <ChevronLeft className="size-4" />
-        Back to Measurements
+        Back to Physical Assessments
       </Button>
 
       <div>
         <h1 className="text-xl font-semibold">
           {client.first_name} {client.last_name}
         </h1>
-        <p className="text-sm text-muted-foreground">{client.email}</p>
       </div>
 
-      {id && <MeasurementCard clientId={id} initialAction={initialAction} />}
+      {id && <PhysicalAssessmentCard clientId={id} initialAction={initialAction} />}
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <History className="size-4 text-muted-foreground" aria-hidden="true" />
-            Measurement History
+            Physical Assessment History
           </CardTitle>
-          <CardDescription>Every measurement recorded for this client.</CardDescription>
+          <CardDescription>Every physical assessment recorded for this client.</CardDescription>
         </CardHeader>
         <CardContent>
           {historyQuery.isLoading && <Skeleton className="h-24 w-full" />}
@@ -87,7 +94,7 @@ export function TrainerClientMeasurementsPage() {
           )}
 
           {!historyQuery.isLoading && !historyQuery.isError && history.length === 0 && (
-            <EmptyState icon={History} message="No measurements recorded yet." />
+            <EmptyState icon={History} message="No physical assessments recorded yet." />
           )}
 
           {history.length > 0 && (
@@ -103,20 +110,20 @@ export function TrainerClientMeasurementsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {history.map((measurement) => (
-                    <tr key={measurement.id}>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{formatDate(measurement.recorded_at)}</td>
+                  {history.map((physicalAssessment) => (
+                    <tr key={physicalAssessment.id}>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{formatDate(physicalAssessment.recorded_at)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {measurement.weight_kg != null ? `${measurement.weight_kg} kg` : "—"}
+                        {physicalAssessment.weight_kg != null ? `${physicalAssessment.weight_kg} kg` : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {measurement.body_fat_percentage != null ? `${measurement.body_fat_percentage} %` : "—"}
+                        {physicalAssessment.body_fat_percentage != null ? `${physicalAssessment.body_fat_percentage} %` : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {measurement.waist_cm != null ? `${measurement.waist_cm} cm` : "—"}
+                        {physicalAssessment.waist_cm != null ? `${physicalAssessment.waist_cm} cm` : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {measurement.chest_cm != null ? `${measurement.chest_cm} cm` : "—"}
+                        {physicalAssessment.chest_cm != null ? `${physicalAssessment.chest_cm} cm` : "—"}
                       </td>
                     </tr>
                   ))}

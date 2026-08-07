@@ -9,16 +9,14 @@ from sqlalchemy.future import select
 from models.client import Client
 from models.client_trainer_assignment import ClientTrainerAssignment
 from models.trainer_profile import TrainerProfile
-from models.user import User
 
 
 @dataclass(frozen=True)
 class AssignedClientRecord:
-    """A client assigned to a trainer, joined with the assignment and the client's account email."""
+    """A client assigned to a trainer, joined with the assignment."""
 
     assignment: ClientTrainerAssignment
     client: Client
-    email: str
 
 
 @dataclass(frozen=True)
@@ -162,15 +160,14 @@ class SQLAlchemyAssignmentRepository(AssignmentRepository):
         self, trainer_id: uuid.UUID
     ) -> list[AssignedClientRecord]:
         result = await self._session.execute(
-            select(ClientTrainerAssignment, Client, User.email)
+            select(ClientTrainerAssignment, Client)
             .join(Client, Client.id == ClientTrainerAssignment.client_id)
-            .join(User, User.id == Client.user_id)
             .where(ClientTrainerAssignment.trainer_id == trainer_id)
             .order_by(ClientTrainerAssignment.assigned_at.desc())
         )
         return [
-            AssignedClientRecord(assignment=assignment, client=client, email=email)
-            for assignment, client, email in result.all()
+            AssignedClientRecord(assignment=assignment, client=client)
+            for assignment, client in result.all()
         ]
 
     async def list_trainers_for_client(

@@ -40,9 +40,9 @@ class FakeApplicationSettingRepository(ApplicationSettingRepository):
 def _make_setting(**overrides) -> ApplicationSetting:
     defaults = dict(
         id=uuid.uuid4(),
-        key="measurement_overdue_days",
+        key="physical_assessment_overdue_days",
         value="14",
-        description="Days after which measurements are overdue.",
+        description="Days after which physical assessments are overdue.",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -58,22 +58,22 @@ def _make_service() -> tuple[ApplicationSettingService, FakeApplicationSettingRe
 
 def test_list_settings_returns_all():
     service, repository = _make_service()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
     repository.seed(_make_setting(key="subscription_expired_days", value="30"))
 
     settings = asyncio.run(service.list_settings())
 
     assert {setting.key for setting in settings} == {
-        "measurement_overdue_days",
+        "physical_assessment_overdue_days",
         "subscription_expired_days",
     }
 
 
 def test_get_setting_succeeds():
     service, repository = _make_service()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
 
-    detail = asyncio.run(service.get_setting("measurement_overdue_days"))
+    detail = asyncio.run(service.get_setting("physical_assessment_overdue_days"))
 
     assert detail.value == "14"
 
@@ -87,11 +87,11 @@ def test_get_setting_raises_not_found():
 
 def test_update_setting_succeeds_for_super_admin():
     service, repository = _make_service()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
 
     detail = asyncio.run(
         service.update_setting(
-            actor_role=RoleName.SUPER_ADMIN, key="measurement_overdue_days", value="21"
+            actor_role=RoleName.SUPER_ADMIN, key="physical_assessment_overdue_days", value="21"
         )
     )
 
@@ -100,13 +100,13 @@ def test_update_setting_succeeds_for_super_admin():
 
 def test_update_setting_rejects_non_super_admin():
     service, repository = _make_service()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
 
     for role in (RoleName.TRAINER, RoleName.CLIENT, None):
         with pytest.raises(ForbiddenError):
             asyncio.run(
                 service.update_setting(
-                    actor_role=role, key="measurement_overdue_days", value="21"
+                    actor_role=role, key="physical_assessment_overdue_days", value="21"
                 )
             )
 
@@ -124,17 +124,17 @@ def test_update_setting_raises_not_found():
 
 def test_get_int_parses_stored_value():
     service, repository = _make_service()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
 
-    assert asyncio.run(service.get_int("measurement_overdue_days")) == 14
+    assert asyncio.run(service.get_int("physical_assessment_overdue_days")) == 14
 
 
 def test_get_int_raises_on_non_numeric_value():
     service, repository = _make_service()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="not-a-number"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="not-a-number"))
 
     with pytest.raises(InvalidSettingValueError):
-        asyncio.run(service.get_int("measurement_overdue_days"))
+        asyncio.run(service.get_int("physical_assessment_overdue_days"))
 
 
 def test_get_string_returns_raw_value():

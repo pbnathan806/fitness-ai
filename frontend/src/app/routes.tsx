@@ -24,8 +24,8 @@ import { TrainerEditPage } from "@/app/pages/trainers/TrainerEditPage"
 import { TrainerDetailsPage } from "@/app/pages/trainers/TrainerDetailsPage"
 import { TrainerProfilePage } from "@/app/pages/trainer/TrainerProfilePage"
 import { TrainerAvailabilityPage } from "@/app/pages/trainer/TrainerAvailabilityPage"
-import { TrainerMeasurementsPage } from "@/app/pages/trainer/TrainerMeasurementsPage"
-import { TrainerClientMeasurementsPage } from "@/app/pages/trainer/TrainerClientMeasurementsPage"
+import { TrainerPhysicalAssessmentsPage } from "@/app/pages/trainer/TrainerPhysicalAssessmentsPage"
+import { TrainerClientPhysicalAssessmentsPage } from "@/app/pages/trainer/TrainerClientPhysicalAssessmentsPage"
 import { TrainerClientsPage } from "@/app/pages/trainer/TrainerClientsPage"
 import { TrainerSessionNotesPage } from "@/app/pages/trainer/TrainerSessionNotesPage"
 import { TrainerCheckInsPage } from "@/app/pages/trainer/TrainerCheckInsPage"
@@ -36,8 +36,9 @@ import { SubscriptionsListPage } from "@/app/pages/subscriptions/SubscriptionsLi
 import { SubscriptionCreatePage } from "@/app/pages/subscriptions/SubscriptionCreatePage"
 import { SubscriptionDetailsPage } from "@/app/pages/subscriptions/SubscriptionDetailsPage"
 import { ClientSubscriptionsPage } from "@/app/pages/client/ClientSubscriptionsPage"
-import { ClientMeasurementsPage } from "@/app/pages/client/ClientMeasurementsPage"
+import { ClientPhysicalAssessmentsPage } from "@/app/pages/client/ClientPhysicalAssessmentsPage"
 import { ClientProfilePage } from "@/app/pages/client/ClientProfilePage"
+import { ClientCheckInsPage } from "@/app/pages/client/ClientCheckInsPage"
 import { SessionsListPage } from "@/app/pages/sessions/SessionsListPage"
 import { SessionCreatePage } from "@/app/pages/sessions/SessionCreatePage"
 import { SessionBulkCreatePage } from "@/app/pages/sessions/SessionBulkCreatePage"
@@ -49,7 +50,7 @@ import { ClientMySessionsListPage } from "@/app/pages/client/ClientMySessionsLis
 import { ClientMySessionDetailsPage } from "@/app/pages/client/ClientMySessionDetailsPage"
 import { ApplicationSettingsPage } from "@/app/pages/applicationSettings/ApplicationSettingsPage"
 import { SuperAdminCheckInsPage } from "@/app/pages/checkIns/SuperAdminCheckInsPage"
-import { SuperAdminMeasurementsPage } from "@/app/pages/measurements/SuperAdminMeasurementsPage"
+import { SuperAdminPhysicalAssessmentsPage } from "@/app/pages/physicalAssessments/SuperAdminPhysicalAssessmentsPage"
 import { Role, type RoleName } from "@/lib/constants"
 import { NAV_ITEMS } from "@/lib/navigation"
 import type { ReactNode } from "react"
@@ -110,8 +111,8 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
     "Check-ins": {
       children: [{ index: true, element: <SuperAdminCheckInsPage /> }],
     },
-    Measurements: {
-      children: [{ index: true, element: <SuperAdminMeasurementsPage /> }],
+    "Physical Assessments": {
+      children: [{ index: true, element: <SuperAdminPhysicalAssessmentsPage /> }],
     },
     Settings: {
       children: [{ index: true, element: <ApplicationSettingsPage /> }],
@@ -136,8 +137,8 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
     Profile: {
       children: [{ index: true, element: <TrainerProfilePage /> }],
     },
-    Measurements: {
-      children: [{ index: true, element: <TrainerMeasurementsPage /> }],
+    "Physical Assessments": {
+      children: [{ index: true, element: <TrainerPhysicalAssessmentsPage /> }],
     },
     Availability: {
       children: [{ index: true, element: <TrainerAvailabilityPage /> }],
@@ -156,8 +157,11 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
         { path: ":id", element: <ClientMySessionDetailsPage /> },
       ],
     },
-    Measurements: {
-      children: [{ index: true, element: <ClientMeasurementsPage /> }],
+    "Physical Assessments": {
+      children: [{ index: true, element: <ClientPhysicalAssessmentsPage /> }],
+    },
+    "Check-ins": {
+      children: [{ index: true, element: <ClientCheckInsPage /> }],
     },
   },
 }
@@ -223,11 +227,11 @@ export const router = createBrowserRouter([
               { index: true, element: <Navigate to="dashboard" replace /> },
               ...roleSectionChildren(Role.TRAINER),
               // Not a NAV_ITEMS entry (no sidebar link) - reached by clicking a
-              // row on the Measurements page (Pending or All tab) or the
-              // Assigned Clients list's "View Client" action. The bare
+              // row on the Physical Assessments page (Pending or All tab) or
+              // the Assigned Clients list's "View Client" action. The bare
               // /trainer/clients index route above (SECTION_OVERRIDES
               // "Assigned Clients") is separate.
-              { path: "clients/:id", element: <TrainerClientMeasurementsPage /> },
+              { path: "clients/:id", element: <TrainerClientPhysicalAssessmentsPage /> },
               { path: "change-password", element: <ChangePasswordPage /> },
             ],
           },

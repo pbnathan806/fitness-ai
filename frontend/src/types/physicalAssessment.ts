@@ -1,6 +1,6 @@
 import type { PaginatedResponse } from "@/types/dashboard"
 
-export interface Measurement {
+export interface PhysicalAssessment {
   id: string
   client_id: string
   weight_kg: number | null
@@ -13,13 +13,19 @@ export interface Measurement {
   left_thigh_cm: number | null
   right_thigh_cm: number | null
   resting_heart_rate: number | null
+  // Groundwork only - always null until a photo upload capability is
+  // built. Not present on the create/update input types below since
+  // there's no upload mechanism yet to populate them.
+  front_photo_url: string | null
+  back_photo_url: string | null
+  side_photo_url: string | null
   recorded_by: string
   recorded_at: string
   created_at: string
   updated_at: string
 }
 
-export interface MeasurementCreateInput {
+export interface PhysicalAssessmentCreateInput {
   client_id: string
   recorded_at?: string | null
   weight_kg: number | null
@@ -34,7 +40,7 @@ export interface MeasurementCreateInput {
   resting_heart_rate: number | null
 }
 
-export interface MeasurementUpdateInput {
+export interface PhysicalAssessmentUpdateInput {
   weight_kg?: number | null
   body_fat_percentage?: number | null
   chest_cm?: number | null
@@ -47,7 +53,7 @@ export interface MeasurementUpdateInput {
   resting_heart_rate?: number | null
 }
 
-export interface LatestMeasurement {
+export interface LatestPhysicalAssessment {
   weight_kg: number | null
   previous_weight_kg: number | null
   weight_change: number | null
@@ -81,11 +87,11 @@ export interface LatestMeasurement {
   recorded_at: string | null
 }
 
-export type PaginatedMeasurements = PaginatedResponse<Measurement>
+export type PaginatedPhysicalAssessments = PaginatedResponse<PhysicalAssessment>
 
-export interface PendingMeasurement {
+export interface PendingPhysicalAssessment {
   client_id: string
   client_name: string
-  last_measurement_date: string
+  last_physical_assessment_date: string
   days_overdue: number
 }

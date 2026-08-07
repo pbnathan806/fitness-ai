@@ -8,32 +8,33 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
-import { measurementService } from "@/services/measurementService"
+import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { clientService } from "@/services/clientService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate } from "@/lib/format"
 
 type Tab = "pending" | "all"
 
-/** Trainer's own measurements: a Pending queue (assigned clients overdue for
- * their next measurement, mirrors the existing pending-measurements screen)
- * and an All log (every recorded measurement for assigned clients, newest
- * first, mirroring SuperAdminMeasurementsPage's "All Measurements" table
- * shape). Adding/editing a measurement already works via the per-client page
- * (`/trainer/clients/:id`) - both tabs link into that same existing
- * capability. */
-export function TrainerMeasurementsPage() {
+/** Trainer's own physical assessments: a Pending queue (assigned clients
+ * overdue for their next physical assessment, mirrors the existing
+ * pending-physical-assessments screen) and an All log (every recorded
+ * physical assessment for assigned clients, newest first, mirroring
+ * SuperAdminPhysicalAssessmentsPage's "All Physical Assessments" table
+ * shape). Adding/editing a physical assessment already works via the
+ * per-client page (`/trainer/clients/:id`) - both tabs link into that same
+ * existing capability. */
+export function TrainerPhysicalAssessmentsPage() {
   const [tab, setTab] = useState<Tab>("pending")
 
   const pendingQuery = useQuery({
-    queryKey: ["measurements", "pending"],
-    queryFn: measurementService.listPending,
+    queryKey: ["physical-assessments", "pending"],
+    queryFn: physicalAssessmentService.listPending,
     enabled: tab === "pending",
   })
 
   const allQuery = useQuery({
-    queryKey: ["measurements", "all"],
-    queryFn: measurementService.listAllMeasurements,
+    queryKey: ["physical-assessments", "all"],
+    queryFn: physicalAssessmentService.listAllPhysicalAssessments,
     enabled: tab === "all",
   })
 
@@ -51,7 +52,7 @@ export function TrainerMeasurementsPage() {
     return map
   }, [clientsQuery.data])
 
-  const sortedMeasurements = useMemo(() => {
+  const sortedPhysicalAssessments = useMemo(() => {
     return [...(allQuery.data ?? [])].sort(
       (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime(),
     )
@@ -63,8 +64,8 @@ export function TrainerMeasurementsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">Measurements</h1>
-        <p className="text-sm text-muted-foreground">Body measurements for your assigned clients.</p>
+        <h1 className="text-xl font-semibold">Physical Assessments</h1>
+        <p className="text-sm text-muted-foreground">Physical assessments for your assigned clients.</p>
       </div>
 
       <div className="flex gap-2">
@@ -80,14 +81,14 @@ export function TrainerMeasurementsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
-              <CardTitle>Pending Measurements</CardTitle>
+              <CardTitle>Pending Physical Assessments</CardTitle>
               {!pendingQuery.isLoading && !pendingQuery.isError && (
                 <Badge variant={pendingQuery.data && pendingQuery.data.length > 0 ? "warning" : "secondary"}>
                   {pendingQuery.data?.length ?? 0} pending
                 </Badge>
               )}
             </div>
-            <CardDescription>Add a new measurement, edit the most recent one, or view full history.</CardDescription>
+            <CardDescription>Add a new physical assessment, edit the most recent one, or view full history.</CardDescription>
           </CardHeader>
           <CardContent>
             {pendingQuery.isLoading && (
@@ -103,7 +104,7 @@ export function TrainerMeasurementsPage() {
             )}
 
             {!pendingQuery.isLoading && !pendingQuery.isError && pendingQuery.data?.length === 0 && (
-              <EmptyState icon={Ruler} message="No pending measurements. Everything is up to date." />
+              <EmptyState icon={Ruler} message="No pending physical assessments. Everything is up to date." />
             )}
 
             {!pendingQuery.isLoading && !pendingQuery.isError && pendingQuery.data && pendingQuery.data.length > 0 && (
@@ -114,7 +115,7 @@ export function TrainerMeasurementsPage() {
                       <Link to={`/trainer/clients/${item.client_id}`} className="min-w-0 flex-1 hover:underline">
                         <p className="text-sm font-medium">{item.client_name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Last measured {formatDate(item.last_measurement_date)}
+                          Last assessed {formatDate(item.last_physical_assessment_date)}
                         </p>
                       </Link>
                       <Badge variant="warning" className="shrink-0">
@@ -128,7 +129,7 @@ export function TrainerMeasurementsPage() {
                         render={<Link to={`/trainer/clients/${item.client_id}?action=add`} />}
                         nativeButton={false}
                       >
-                        Add Measurement
+                        Add Physical Assessment
                       </Button>
                       <Button
                         size="sm"
@@ -136,7 +137,7 @@ export function TrainerMeasurementsPage() {
                         render={<Link to={`/trainer/clients/${item.client_id}?action=edit`} />}
                         nativeButton={false}
                       >
-                        Edit Measurement
+                        Edit Physical Assessment
                       </Button>
                       <Button
                         size="sm"
@@ -158,8 +159,8 @@ export function TrainerMeasurementsPage() {
       {tab === "all" && (
         <Card>
           <CardHeader>
-            <CardTitle>All Measurements</CardTitle>
-            <CardDescription>Every measurement recorded for your assigned clients, newest first.</CardDescription>
+            <CardTitle>All Physical Assessments</CardTitle>
+            <CardDescription>Every physical assessment recorded for your assigned clients, newest first.</CardDescription>
           </CardHeader>
           <CardContent>
             {allIsLoading && (
@@ -172,16 +173,16 @@ export function TrainerMeasurementsPage() {
 
             {!allIsLoading && allIsError && (
               <ErrorState
-                message={getApiErrorMessage(allQuery.error, "Unable to load measurements.")}
+                message={getApiErrorMessage(allQuery.error, "Unable to load physical assessments.")}
                 onRetry={() => allQuery.refetch()}
               />
             )}
 
-            {!allIsLoading && !allIsError && sortedMeasurements.length === 0 && (
-              <EmptyState icon={Ruler} message="No measurements found." />
+            {!allIsLoading && !allIsError && sortedPhysicalAssessments.length === 0 && (
+              <EmptyState icon={Ruler} message="No physical assessments found." />
             )}
 
-            {!allIsLoading && !allIsError && sortedMeasurements.length > 0 && (
+            {!allIsLoading && !allIsError && sortedPhysicalAssessments.length > 0 && (
               <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
@@ -198,31 +199,31 @@ export function TrainerMeasurementsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {sortedMeasurements.map((measurement) => (
-                      <tr key={measurement.id} className="hover:bg-muted/30">
+                    {sortedPhysicalAssessments.map((physicalAssessment) => (
+                      <tr key={physicalAssessment.id} className="hover:bg-muted/30">
                         <td className="max-w-[180px] truncate px-3 py-2.5 font-medium">
-                          {clientNameById.get(measurement.client_id) ?? `Client #${measurement.client_id.slice(0, 8)}`}
+                          {clientNameById.get(physicalAssessment.client_id) ?? `Client #${physicalAssessment.client_id.slice(0, 8)}`}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                          {formatDate(measurement.recorded_at)}
+                          {formatDate(physicalAssessment.recorded_at)}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.weight_kg != null ? `${measurement.weight_kg} kg` : "—"}
+                          {physicalAssessment.weight_kg != null ? `${physicalAssessment.weight_kg} kg` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.body_fat_percentage != null ? `${measurement.body_fat_percentage} %` : "—"}
+                          {physicalAssessment.body_fat_percentage != null ? `${physicalAssessment.body_fat_percentage} %` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.waist_cm != null ? `${measurement.waist_cm} cm` : "—"}
+                          {physicalAssessment.waist_cm != null ? `${physicalAssessment.waist_cm} cm` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {measurement.chest_cm != null ? `${measurement.chest_cm} cm` : "—"}
+                          {physicalAssessment.chest_cm != null ? `${physicalAssessment.chest_cm} cm` : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           <Button
                             variant="ghost"
                             size="sm"
-                            render={<Link to={`/trainer/clients/${measurement.client_id}`} />}
+                            render={<Link to={`/trainer/clients/${physicalAssessment.client_id}`} />}
                             nativeButton={false}
                           >
                             <Eye className="size-4" />

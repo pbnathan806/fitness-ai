@@ -13,22 +13,22 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner"
 import { ClientDetailsCard } from "@/app/pages/clients/components/ClientDetailsCard"
 import { TrainerAssignmentCard } from "@/app/pages/clients/components/TrainerAssignmentCard"
 import { SubscriptionEligibilityBadge } from "@/components/common/SubscriptionEligibilityBadge"
-import { MeasurementForm } from "@/app/pages/measurements/components/MeasurementForm"
+import { PhysicalAssessmentForm } from "@/app/pages/physicalAssessments/components/PhysicalAssessmentForm"
 import { clientService } from "@/services/clientService"
 import { assignmentService } from "@/services/assignmentService"
 import { subscriptionService } from "@/services/subscriptionService"
-import { measurementService } from "@/services/measurementService"
+import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { checkInService } from "@/services/checkInService"
 import { dashboardService } from "@/services/dashboardService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate, formatDateTime } from "@/lib/format"
 import { SUBSCRIPTION_STATUS_BADGE_VARIANT, SUBSCRIPTION_STATUS_LABELS } from "@/lib/subscriptionStatus"
-import type { MeasurementCreateInput, MeasurementUpdateInput } from "@/types/measurement"
+import type { PhysicalAssessmentCreateInput, PhysicalAssessmentUpdateInput } from "@/types/physicalAssessment"
 
 export function ClientDetailsPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
-  const [isAddingMeasurement, setIsAddingMeasurement] = useState(false)
+  const [isAddingPhysicalAssessment, setIsAddingPhysicalAssessment] = useState(false)
 
   const clientQuery = useQuery({
     queryKey: ["clients", id],
@@ -51,9 +51,9 @@ export function ClientDetailsPage() {
     queryFn: dashboardService.listSessionsForUpcomingWidget,
   })
 
-  const measurementQuery = useQuery({
-    queryKey: ["measurements", "latest", id],
-    queryFn: () => measurementService.getLatestMeasurement(id!),
+  const physicalAssessmentQuery = useQuery({
+    queryKey: ["physical-assessments", "latest", id],
+    queryFn: () => physicalAssessmentService.getLatestPhysicalAssessment(id!),
     enabled: !!id,
   })
 
@@ -63,13 +63,13 @@ export function ClientDetailsPage() {
     enabled: !!id,
   })
 
-  const createMeasurementMutation = useMutation({
-    mutationFn: (values: MeasurementUpdateInput) =>
-      measurementService.create({ client_id: id!, recorded_at: null, ...values } as MeasurementCreateInput),
+  const createPhysicalAssessmentMutation = useMutation({
+    mutationFn: (values: PhysicalAssessmentUpdateInput) =>
+      physicalAssessmentService.create({ client_id: id!, recorded_at: null, ...values } as PhysicalAssessmentCreateInput),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["measurements", "latest", id] })
-      setIsAddingMeasurement(false)
-      toast.success("Measurement recorded.")
+      queryClient.invalidateQueries({ queryKey: ["physical-assessments", "latest", id] })
+      setIsAddingPhysicalAssessment(false)
+      toast.success("Physical assessment recorded.")
     },
   })
 
@@ -228,44 +228,44 @@ export function ClientDetailsPage() {
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2">
                 <Ruler className="size-4 text-muted-foreground" aria-hidden="true" />
-                Latest Measurements
+                Latest Physical Assessment
               </CardTitle>
-              {!isAddingMeasurement && (
-                <Button size="sm" onClick={() => setIsAddingMeasurement(true)}>
+              {!isAddingPhysicalAssessment && (
+                <Button size="sm" onClick={() => setIsAddingPhysicalAssessment(true)}>
                   <Plus className="size-4" />
-                  Add Measurement
+                  Add Physical Assessment
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!isAddingMeasurement && (
+            {!isAddingPhysicalAssessment && (
               <>
-                {measurementQuery.isLoading && <Skeleton className="h-16 w-full" />}
-                {!measurementQuery.isLoading && measurementQuery.isError && (
-                  <ErrorState message="Unable to load measurements." onRetry={() => measurementQuery.refetch()} />
+                {physicalAssessmentQuery.isLoading && <Skeleton className="h-16 w-full" />}
+                {!physicalAssessmentQuery.isLoading && physicalAssessmentQuery.isError && (
+                  <ErrorState message="Unable to load physical assessments." onRetry={() => physicalAssessmentQuery.refetch()} />
                 )}
-                {!measurementQuery.isLoading && !measurementQuery.isError && !measurementQuery.data && (
-                  <EmptyState icon={Ruler} message="No measurements available." />
+                {!physicalAssessmentQuery.isLoading && !physicalAssessmentQuery.isError && !physicalAssessmentQuery.data && (
+                  <EmptyState icon={Ruler} message="No physical assessments available." />
                 )}
-                {measurementQuery.data && (
+                {physicalAssessmentQuery.data && (
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground">Date</p>
                       <p className="text-sm font-medium">
-                        {measurementQuery.data.recorded_at ? formatDate(measurementQuery.data.recorded_at) : "N/A"}
+                        {physicalAssessmentQuery.data.recorded_at ? formatDate(physicalAssessmentQuery.data.recorded_at) : "N/A"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Weight</p>
                       <p className="text-sm font-medium">
-                        {measurementQuery.data.weight_kg != null ? `${measurementQuery.data.weight_kg} kg` : "N/A"}
+                        {physicalAssessmentQuery.data.weight_kg != null ? `${physicalAssessmentQuery.data.weight_kg} kg` : "N/A"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Waist</p>
                       <p className="text-sm font-medium">
-                        {measurementQuery.data.waist_cm != null ? `${measurementQuery.data.waist_cm} cm` : "N/A"}
+                        {physicalAssessmentQuery.data.waist_cm != null ? `${physicalAssessmentQuery.data.waist_cm} cm` : "N/A"}
                       </p>
                     </div>
                   </div>
@@ -273,17 +273,17 @@ export function ClientDetailsPage() {
               </>
             )}
 
-            {isAddingMeasurement && (
+            {isAddingPhysicalAssessment && (
               <>
-                <MeasurementForm
-                  onSubmit={(values) => createMeasurementMutation.mutate(values)}
-                  isSubmitting={createMeasurementMutation.isPending}
+                <PhysicalAssessmentForm
+                  onSubmit={(values) => createPhysicalAssessmentMutation.mutate(values)}
+                  isSubmitting={createPhysicalAssessmentMutation.isPending}
                   submitErrorMessage={
-                    createMeasurementMutation.isError ? getApiErrorMessage(createMeasurementMutation.error) : null
+                    createPhysicalAssessmentMutation.isError ? getApiErrorMessage(createPhysicalAssessmentMutation.error) : null
                   }
-                  submitLabel="Save Measurement"
+                  submitLabel="Save Physical Assessment"
                 />
-                <Button variant="ghost" size="sm" onClick={() => setIsAddingMeasurement(false)}>
+                <Button variant="ghost" size="sm" onClick={() => setIsAddingPhysicalAssessment(false)}>
                   Cancel
                 </Button>
               </>

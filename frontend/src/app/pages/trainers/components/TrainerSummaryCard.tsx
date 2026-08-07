@@ -49,7 +49,7 @@ export function TrainerSummaryCard({ summary, isLoading, isError, onRetry }: Tra
             <Stat label="Sessions This Week" value={summary.sessions_this_week} />
             <Stat label="Completed Sessions This Month" value={summary.completed_sessions_this_month} />
             <Stat label="Pending Check-ins" value={summary.pending_check_ins} />
-            <Stat label="Pending Measurements" value={summary.pending_measurements} />
+            <Stat label="Pending Physical Assessments" value={summary.pending_physical_assessments} />
           </div>
         )}
       </CardContent>

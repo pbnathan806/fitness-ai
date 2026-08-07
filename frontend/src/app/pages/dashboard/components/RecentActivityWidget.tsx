@@ -3,11 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { formatRelativeToNow } from "@/lib/format"
-import type { DashboardCheckIn, DashboardMeasurement } from "@/types/dashboard"
+import type { DashboardCheckIn, DashboardPhysicalAssessment } from "@/types/dashboard"
 
 interface RecentActivityWidgetProps {
   checkIns: DashboardCheckIn[] | undefined
-  measurements: DashboardMeasurement[] | undefined
+  physicalAssessments: DashboardPhysicalAssessment[] | undefined
   clientNameById: Map<string, string>
   isLoading: boolean
   isError: boolean
@@ -18,7 +18,7 @@ const MAX_ITEMS = 8
 
 export function RecentActivityWidget({
   checkIns,
-  measurements,
+  physicalAssessments,
   clientNameById,
   isLoading,
   isError,
@@ -31,9 +31,9 @@ export function RecentActivityWidget({
       clientName: clientNameById.get(item.client_id) ?? "Client",
       timestamp: item.submitted_at,
     })),
-    ...(measurements ?? []).map((item) => ({
+    ...(physicalAssessments ?? []).map((item) => ({
       id: item.id,
-      kind: "measurement" as const,
+      kind: "physical-assessment" as const,
       clientName: clientNameById.get(item.client_id) ?? "Client",
       timestamp: item.recorded_at,
     })),
@@ -68,7 +68,7 @@ export function RecentActivityWidget({
           <ul className="divide-y">
             {feed.map((item) => {
               const Icon = item.kind === "check-in" ? ClipboardCheck : Ruler
-              const description = item.kind === "check-in" ? "submitted a check-in" : "recorded a measurement"
+              const description = item.kind === "check-in" ? "submitted a check-in" : "recorded a physical assessment"
               return (
                 <li key={`${item.kind}-${item.id}`} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                   <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

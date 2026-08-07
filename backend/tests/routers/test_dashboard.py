@@ -11,7 +11,7 @@ from routers.dashboard import (
     get_check_in_repository,
     get_client_repository,
     get_dashboard_repository,
-    get_measurement_repository,
+    get_physical_assessment_repository,
     get_session_repository,
     get_subscription_repository,
 )
@@ -23,7 +23,7 @@ from tests.services.test_assignment_service import FakeAssignmentRepository
 from tests.services.test_check_in_service import FakeCheckInRepository
 from tests.services.test_client_service import FakeClientRepository
 from tests.services.test_dashboard_service import FakeDashboardRepository, _build_shared_fixture
-from tests.services.test_measurement_service import FakeMeasurementRepository
+from tests.services.test_physical_assessment_service import FakePhysicalAssessmentRepository
 from tests.services.test_session_service import FakeSessionRepository
 from tests.services.test_subscription_service import FakeSubscriptionRepository
 
@@ -37,7 +37,7 @@ def _override_dependencies(
     assignment_repository=None,
     session_repository=None,
     check_in_repository=None,
-    measurement_repository=None,
+    physical_assessment_repository=None,
     subscription_repository=None,
     application_setting_repository=None,
 ) -> None:
@@ -56,8 +56,8 @@ def _override_dependencies(
     app.dependency_overrides[get_check_in_repository] = lambda: (
         check_in_repository or FakeCheckInRepository()
     )
-    app.dependency_overrides[get_measurement_repository] = lambda: (
-        measurement_repository or FakeMeasurementRepository()
+    app.dependency_overrides[get_physical_assessment_repository] = lambda: (
+        physical_assessment_repository or FakePhysicalAssessmentRepository()
     )
     app.dependency_overrides[get_subscription_repository] = lambda: (
         subscription_repository or FakeSubscriptionRepository()
@@ -72,7 +72,7 @@ def _override_dependencies(
 
 def _seeded_application_setting_repository() -> FakeApplicationSettingRepository:
     repository = FakeApplicationSettingRepository()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
     repository.seed(_make_setting(key="subscription_expired_days", value="30"))
     return repository
 
@@ -117,7 +117,7 @@ def test_trainer_dashboard_succeeds_for_trainer():
         assignment_repository=fixture["assignment_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
-        measurement_repository=fixture["measurement_repository"],
+        physical_assessment_repository=fixture["physical_assessment_repository"],
         subscription_repository=fixture["subscription_repository"],
         application_setting_repository=_seeded_application_setting_repository(),
     )
@@ -130,7 +130,7 @@ def test_trainer_dashboard_succeeds_for_trainer():
     assert body["assigned_clients"] == 2
     assert body["active_clients"] == 1
     # client_b has never been measured at all ("missing"), not counted here.
-    assert body["pending_measurements"] == 0
+    assert body["pending_physical_assessments"] == 0
 
 
 def test_super_admin_dashboard_requires_authentication():
@@ -160,7 +160,7 @@ def test_super_admin_dashboard_succeeds_for_super_admin():
         assignment_repository=fixture["assignment_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
-        measurement_repository=fixture["measurement_repository"],
+        physical_assessment_repository=fixture["physical_assessment_repository"],
         subscription_repository=fixture["subscription_repository"],
         application_setting_repository=_seeded_application_setting_repository(),
     )
@@ -174,8 +174,8 @@ def test_super_admin_dashboard_succeeds_for_super_admin():
     assert body["active_clients"] == 1
     assert body["expired_clients"] == 1
     assert body["total_trainers"] == 1
-    assert body["pending_measurements"] == 0
-    assert body["clients_missing_measurements"] == 1
+    assert body["pending_physical_assessments"] == 0
+    assert body["clients_missing_physical_assessments"] == 1
 
 
 def test_client_dashboard_requires_authentication():
@@ -226,22 +226,22 @@ def test_client_dashboard_succeeds_for_client():
     assert body["completed_check_ins"] == 0
     assert body["expected_check_ins"] == 0
     assert body["adherence_percentage"] == 0
-    assert body["latest_measurement_date"] is None
-    assert body["next_measurement_due_date"] is None
+    assert body["latest_physical_assessment_date"] is None
+    assert body["next_physical_assessment_due_date"] is None
 
 
-def test_client_dashboard_computes_measurement_due_date():
+def test_client_dashboard_computes_physical_assessment_due_date():
     from datetime import datetime, timedelta, timezone
     from zoneinfo import ZoneInfo
 
     from tests.services.test_dashboard_service import _build_client_fixture
-    from tests.services.test_measurement_service import _make_measurement
+    from tests.services.test_physical_assessment_service import _make_physical_assessment
 
     fixture = _build_client_fixture()
     client = fixture["client"]
     recorded_at = datetime.now(timezone.utc) - timedelta(days=5)
-    fixture["measurement_repository"].seed(
-        _make_measurement(client.id, uuid.uuid4(), recorded_at=recorded_at)
+    fixture["physical_assessment_repository"].seed(
+        _make_physical_assessment(client.id, uuid.uuid4(), recorded_at=recorded_at)
     )
     _override_dependencies(
         fixture["user_id"],
@@ -249,7 +249,7 @@ def test_client_dashboard_computes_measurement_due_date():
         client_repository=fixture["client_repository"],
         session_repository=fixture["session_repository"],
         check_in_repository=fixture["check_in_repository"],
-        measurement_repository=fixture["measurement_repository"],
+        physical_assessment_repository=fixture["physical_assessment_repository"],
         subscription_repository=fixture["subscription_repository"],
         application_setting_repository=_seeded_application_setting_repository(),
     )
@@ -260,5 +260,5 @@ def test_client_dashboard_computes_measurement_due_date():
     assert response.status_code == 200
     body = response.json()
     expected_latest = recorded_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
-    assert body["latest_measurement_date"] == expected_latest.isoformat()
-    assert body["next_measurement_due_date"] == (expected_latest + timedelta(days=14)).isoformat()
+    assert body["latest_physical_assessment_date"] == expected_latest.isoformat()
+    assert body["next_physical_assessment_due_date"] == (expected_latest + timedelta(days=14)).isoformat()

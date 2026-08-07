@@ -1,27 +1,36 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.base import Base
 
 
-class Measurement(Base):
-    """A single point-in-time client body-measurement snapshot (Task-18).
+class PhysicalAssessment(Base):
+    """A single point-in-time client physical assessment snapshot (Task-18,
+    renamed from Measurement).
 
-    Measurements are never deleted, so a client's measurement history is
-    always preserved. A SUPER_ADMIN, or a TRAINER assigned to the client, may
-    edit one until measurement_edit_window_days after recorded_at (enforced
-    in the service layer, not as a DB constraint); CLIENT is always
-    read-only. Every body-measurement field is optional (fitness assessments
-    are often partial) but at least one must be populated - enforced in the
-    service layer via utils.measurement.at_least_one_measurement_required,
-    not as a DB constraint.
+    Physical assessments are never deleted, so a client's physical assessment
+    history is always preserved. A SUPER_ADMIN, or a TRAINER assigned to the
+    client, may edit one until physical_assessment_edit_window_days after
+    recorded_at (enforced in the service layer, not as a DB constraint);
+    CLIENT is always read-only. Every body-measurement field is optional
+    (fitness assessments are often partial) but at least one must be
+    populated - enforced in the service layer via
+    utils.physical_assessment.at_least_one_physical_assessment_required, not
+    as a DB constraint.
+
+    front_photo_url/back_photo_url/side_photo_url are groundwork for a
+    not-yet-built photo upload capability: nullable, always None today, not
+    exposed on any create/update request schema (no upload mechanism exists
+    yet to populate them). Deliberately not restricted to a storage provider -
+    just an external path/URL string, populated by whatever storage backend
+    is chosen later.
     """
 
-    __tablename__ = "measurements"
+    __tablename__ = "physical_assessments"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -44,6 +53,11 @@ class Measurement(Base):
     right_thigh_cm: Mapped[float] = mapped_column(Numeric(5, 2), nullable=True)
     resting_heart_rate: Mapped[int] = mapped_column(Integer, nullable=True)
 
+    # Groundwork only - see class docstring. No write path exists yet.
+    front_photo_url: Mapped[str] = mapped_column(String(2048), nullable=True)
+    back_photo_url: Mapped[str] = mapped_column(String(2048), nullable=True)
+    side_photo_url: Mapped[str] = mapped_column(String(2048), nullable=True)
+
     recorded_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -60,11 +74,11 @@ class Measurement(Base):
     )
 
     client: Mapped["Client"] = relationship(  # noqa: F821
-        "Client", foreign_keys=[client_id], back_populates="measurements"
+        "Client", foreign_keys=[client_id], back_populates="physical_assessments"
     )
 
     def __repr__(self) -> str:
         return (
-            f"Measurement(id={self.id!r}, client_id={self.client_id!r}, "
+            f"PhysicalAssessment(id={self.id!r}, client_id={self.client_id!r}, "
             f"recorded_at={self.recorded_at!r})"
         )

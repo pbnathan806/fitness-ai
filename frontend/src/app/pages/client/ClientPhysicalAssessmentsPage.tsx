@@ -5,15 +5,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
 import { clientService } from "@/services/clientService"
-import { measurementService } from "@/services/measurementService"
+import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
 import { formatDate } from "@/lib/format"
-import type { LatestMeasurement } from "@/types/measurement"
+import type { LatestPhysicalAssessment } from "@/types/physicalAssessment"
 
 interface FieldSpec {
-  key: keyof LatestMeasurement
-  previousKey: keyof LatestMeasurement
-  changeKey: keyof LatestMeasurement
+  key: keyof LatestPhysicalAssessment
+  previousKey: keyof LatestPhysicalAssessment
+  changeKey: keyof LatestPhysicalAssessment
   label: string
   unit: string
 }
@@ -68,8 +68,9 @@ const FIELDS: FieldSpec[] = [
 ]
 
 /** "72 -> 70 kg (-2)" when both a current and a previous value exist; just
- * the current value on a client's first-ever measurement (no previous to
- * compare against); "Not recorded" when the field has never been captured. */
+ * the current value on a client's first-ever physical assessment (no
+ * previous to compare against); "Not recorded" when the field has never
+ * been captured. */
 function formatMetric(current: number | null, previous: number | null, change: number | null, unit: string): string {
   if (current == null) return "Not recorded"
   if (previous == null) return `${current} ${unit}`
@@ -77,38 +78,38 @@ function formatMetric(current: number | null, previous: number | null, change: n
   return `${previous} → ${current} ${unit} (${sign}${change})`
 }
 
-/** Read-only client view of their own latest-vs-previous measurements
- * (Measurements V1.1 Module 4). Clients cannot add or edit measurements -
- * only Trainers/Super Admins can (see backend MeasurementService RBAC). */
-export function ClientMeasurementsPage() {
+/** Read-only client view of their own latest-vs-previous physical
+ * assessment. Clients cannot add or edit physical assessments - only
+ * Trainers/Super Admins can (see backend PhysicalAssessmentService RBAC). */
+export function ClientPhysicalAssessmentsPage() {
   const clientQuery = useQuery({
     queryKey: ["clients", "me"],
     queryFn: clientService.getMe,
   })
 
-  const measurementQuery = useQuery({
-    queryKey: ["measurements", "latest", clientQuery.data?.id],
-    queryFn: () => measurementService.getLatestMeasurement(clientQuery.data!.id),
+  const physicalAssessmentQuery = useQuery({
+    queryKey: ["physical-assessments", "latest", clientQuery.data?.id],
+    queryFn: () => physicalAssessmentService.getLatestPhysicalAssessment(clientQuery.data!.id),
     enabled: !!clientQuery.data,
   })
 
-  const isLoading = clientQuery.isLoading || (!!clientQuery.data && measurementQuery.isLoading)
+  const isLoading = clientQuery.isLoading || (!!clientQuery.data && physicalAssessmentQuery.isLoading)
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">My Measurements</h1>
-        <p className="text-sm text-muted-foreground">Your latest measurement compared with the one before it.</p>
+        <h1 className="text-xl font-semibold">My Physical Assessments</h1>
+        <p className="text-sm text-muted-foreground">Your latest physical assessment compared with the one before it.</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Ruler className="size-4 text-muted-foreground" aria-hidden="true" />
-            Latest Measurements
+            Latest Physical Assessment
           </CardTitle>
-          {measurementQuery.data?.recorded_at && (
-            <CardDescription>Recorded {formatDate(measurementQuery.data.recorded_at)}</CardDescription>
+          {physicalAssessmentQuery.data?.recorded_at && (
+            <CardDescription>Recorded {formatDate(physicalAssessmentQuery.data.recorded_at)}</CardDescription>
           )}
         </CardHeader>
         <CardContent>
@@ -129,28 +130,28 @@ export function ClientMeasurementsPage() {
 
           {!clientQuery.isLoading &&
             !clientQuery.isError &&
-            !measurementQuery.isLoading &&
-            measurementQuery.isError && (
+            !physicalAssessmentQuery.isLoading &&
+            physicalAssessmentQuery.isError && (
               <ErrorState
-                message={getApiErrorMessage(measurementQuery.error, "Unable to load your measurements.")}
-                onRetry={() => measurementQuery.refetch()}
+                message={getApiErrorMessage(physicalAssessmentQuery.error, "Unable to load your physical assessments.")}
+                onRetry={() => physicalAssessmentQuery.refetch()}
               />
             )}
 
-          {!isLoading && !clientQuery.isError && !measurementQuery.isError && !measurementQuery.data && (
-            <EmptyState icon={Ruler} message="No measurements have been recorded for you yet." />
+          {!isLoading && !clientQuery.isError && !physicalAssessmentQuery.isError && !physicalAssessmentQuery.data && (
+            <EmptyState icon={Ruler} message="No physical assessments have been recorded for you yet." />
           )}
 
-          {measurementQuery.data && (
+          {physicalAssessmentQuery.data && (
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {FIELDS.map((field) => (
                 <div key={field.key}>
                   <dt className="text-xs text-muted-foreground">{field.label}</dt>
                   <dd className="text-sm font-medium">
                     {formatMetric(
-                      measurementQuery.data![field.key] as number | null,
-                      measurementQuery.data![field.previousKey] as number | null,
-                      measurementQuery.data![field.changeKey] as number | null,
+                      physicalAssessmentQuery.data![field.key] as number | null,
+                      physicalAssessmentQuery.data![field.previousKey] as number | null,
+                      physicalAssessmentQuery.data![field.changeKey] as number | null,
                       field.unit,
                     )}
                   </dd>

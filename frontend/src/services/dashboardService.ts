@@ -3,7 +3,7 @@ import type {
   ClientDashboardStats,
   DashboardCheckIn,
   DashboardClient,
-  DashboardMeasurement,
+  DashboardPhysicalAssessment,
   DashboardSession,
   PaginatedResponse,
   SuperAdminDashboardStats,
@@ -40,8 +40,8 @@ export const dashboardService = {
     return data.items
   },
 
-  async listRecentMeasurements(): Promise<DashboardMeasurement[]> {
-    const { data } = await apiClient.get<PaginatedResponse<DashboardMeasurement>>("/measurements", {
+  async listRecentPhysicalAssessments(): Promise<DashboardPhysicalAssessment[]> {
+    const { data } = await apiClient.get<PaginatedResponse<DashboardPhysicalAssessment>>("/physical-assessments", {
       params: { page: 1, page_size: ACTIVITY_LIST_PAGE_SIZE },
     })
     return data.items

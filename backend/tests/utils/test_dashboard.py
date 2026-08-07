@@ -7,7 +7,7 @@ from utils.dashboard import (
     ist_month_range_utc,
     ist_next_days_range_utc,
     ist_today_range_utc,
-    is_measurement_overdue,
+    is_physical_assessment_overdue,
 )
 
 
@@ -39,23 +39,23 @@ def test_classify_client_state_none_when_no_subscription():
     assert classify_client_state(None, date(2026, 8, 30), 30) is None
 
 
-def test_is_measurement_overdue_when_no_measurement_ever():
-    assert is_measurement_overdue(None, date(2026, 8, 30), 14) is True
+def test_is_physical_assessment_overdue_when_no_physical_assessment_ever():
+    assert is_physical_assessment_overdue(None, date(2026, 8, 30), 14) is True
 
 
-def test_is_measurement_overdue_false_within_window():
+def test_is_physical_assessment_overdue_false_within_window():
     latest = datetime(2026, 8, 20, tzinfo=timezone.utc)
-    assert is_measurement_overdue(latest, date(2026, 8, 30), 14) is False
+    assert is_physical_assessment_overdue(latest, date(2026, 8, 30), 14) is False
 
 
-def test_is_measurement_overdue_true_beyond_window():
+def test_is_physical_assessment_overdue_true_beyond_window():
     latest = datetime(2026, 8, 1, tzinfo=timezone.utc)
-    assert is_measurement_overdue(latest, date(2026, 8, 30), 14) is True
+    assert is_physical_assessment_overdue(latest, date(2026, 8, 30), 14) is True
 
 
-def test_is_measurement_overdue_false_at_exact_boundary():
+def test_is_physical_assessment_overdue_false_at_exact_boundary():
     latest = datetime(2026, 8, 16, tzinfo=timezone.utc)
-    assert is_measurement_overdue(latest, date(2026, 8, 30), 14) is False
+    assert is_physical_assessment_overdue(latest, date(2026, 8, 30), 14) is False
 
 
 def test_ist_today_range_utc_is_24_hours():

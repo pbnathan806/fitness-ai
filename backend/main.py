@@ -14,7 +14,7 @@ from routers.auth import router as auth_router
 from routers.check_ins import router as check_ins_router
 from routers.clients import router as clients_router
 from routers.dashboard import router as dashboard_router
-from routers.measurements import router as measurements_router
+from routers.physical_assessments import router as physical_assessments_router
 from routers.sessions import router as sessions_router
 from routers.subscription_plans import router as subscription_plans_router
 from routers.subscriptions import router as subscriptions_router
@@ -55,7 +55,7 @@ app.include_router(assignments_router)
 app.include_router(subscription_plans_router)
 app.include_router(subscriptions_router)
 app.include_router(sessions_router)
-app.include_router(measurements_router)
+app.include_router(physical_assessments_router)
 app.include_router(check_ins_router)
 app.include_router(dashboard_router)
 app.include_router(trainers_router)

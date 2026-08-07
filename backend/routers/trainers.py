@@ -18,9 +18,9 @@ from repositories.dashboard_repository import (
     DashboardRepository,
     SQLAlchemyDashboardRepository,
 )
-from repositories.measurement_repository import (
-    MeasurementRepository,
-    SQLAlchemyMeasurementRepository,
+from repositories.physical_assessment_repository import (
+    PhysicalAssessmentRepository,
+    SQLAlchemyPhysicalAssessmentRepository,
 )
 from repositories.role_repository import RoleRepository, SQLAlchemyRoleRepository
 from repositories.session_repository import SessionRepository, SQLAlchemySessionRepository
@@ -86,8 +86,10 @@ def get_check_in_repository(session: AsyncSession = Depends(get_db)) -> CheckInR
     return SQLAlchemyCheckInRepository(session)
 
 
-def get_measurement_repository(session: AsyncSession = Depends(get_db)) -> MeasurementRepository:
-    return SQLAlchemyMeasurementRepository(session)
+def get_physical_assessment_repository(
+    session: AsyncSession = Depends(get_db),
+) -> PhysicalAssessmentRepository:
+    return SQLAlchemyPhysicalAssessmentRepository(session)
 
 
 def get_trainer_availability_repository(
@@ -121,7 +123,9 @@ def get_trainer_service(
     assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
     session_repository: SessionRepository = Depends(get_session_repository),
     check_in_repository: CheckInRepository = Depends(get_check_in_repository),
-    measurement_repository: MeasurementRepository = Depends(get_measurement_repository),
+    physical_assessment_repository: PhysicalAssessmentRepository = Depends(
+        get_physical_assessment_repository
+    ),
     trainer_availability_repository: TrainerAvailabilityRepository = Depends(
         get_trainer_availability_repository
     ),
@@ -137,7 +141,7 @@ def get_trainer_service(
         assignment_repository,
         session_repository,
         check_in_repository,
-        measurement_repository,
+        physical_assessment_repository,
         trainer_availability_repository,
         dashboard_repository,
         application_setting_service,
@@ -164,7 +168,7 @@ def _to_summary_response(summary: TrainerSummary) -> TrainerSummaryResponse:
         sessions_this_week=summary.sessions_this_week,
         completed_sessions_this_month=summary.completed_sessions_this_month,
         pending_check_ins=summary.pending_check_ins,
-        pending_measurements=summary.pending_measurements,
+        pending_physical_assessments=summary.pending_physical_assessments,
     )
 
 

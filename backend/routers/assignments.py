@@ -68,8 +68,6 @@ def _to_client_response(item: AssignedClient) -> AssignedClientResponse:
         client_id=item.client_id,
         first_name=item.first_name,
         last_name=item.last_name,
-        email=item.email,
-        phone_number=item.phone_number,
         timezone=item.timezone,
         is_primary=item.is_primary,
     )

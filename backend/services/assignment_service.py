@@ -57,8 +57,6 @@ class AssignedClient:
     client_id: uuid.UUID
     first_name: str
     last_name: str
-    email: str
-    phone_number: str | None
     timezone: str
     is_primary: bool
 
@@ -197,8 +195,6 @@ class AssignmentService:
                 client_id=record.client.id,
                 first_name=record.client.first_name,
                 last_name=record.client.last_name,
-                email=record.email,
-                phone_number=record.client.phone_number,
                 timezone=record.client.timezone,
                 is_primary=record.assignment.is_primary,
             )

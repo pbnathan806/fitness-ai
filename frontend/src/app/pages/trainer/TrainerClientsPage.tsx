@@ -68,8 +68,6 @@ export function TrainerClientsPage() {
                 <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">Client Name</th>
-                    <th className="px-3 py-2 font-medium">Email</th>
-                    <th className="px-3 py-2 font-medium">Phone Number</th>
                     <th className="px-3 py-2 font-medium">Timezone</th>
                     <th className="px-3 py-2 font-medium">Primary</th>
                     <th className="px-3 py-2 font-medium">
@@ -82,10 +80,6 @@ export function TrainerClientsPage() {
                     <tr key={client.assignment_id} className="hover:bg-muted/30">
                       <td className="max-w-[200px] truncate px-3 py-2.5 font-medium">
                         {client.first_name} {client.last_name}
-                      </td>
-                      <td className="max-w-[220px] truncate px-3 py-2.5 text-muted-foreground">{client.email}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                        {client.phone_number ?? "—"}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{client.timezone}</td>
                       <td className="px-3 py-2.5">

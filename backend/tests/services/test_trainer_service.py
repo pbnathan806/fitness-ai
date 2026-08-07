@@ -30,7 +30,7 @@ from tests.services.test_assignment_service import FakeAssignmentRepository, _ma
 from tests.services.test_check_in_service import FakeCheckInRepository, _make_check_in
 from tests.services.test_client_service import FakeClientRepository, FakeUserRepository, _make_client
 from tests.services.test_dashboard_service import FakeDashboardRepository
-from tests.services.test_measurement_service import FakeMeasurementRepository, _make_measurement
+from tests.services.test_physical_assessment_service import FakePhysicalAssessmentRepository, _make_physical_assessment
 from tests.services.test_session_service import FakeSessionRepository, _make_session
 
 
@@ -184,10 +184,10 @@ class FakeTrainerAvailabilityRepository(TrainerAvailabilityRepository):
         return None
 
 
-def _application_setting_service(measurement_overdue_days: int = 14) -> ApplicationSettingService:
+def _application_setting_service(physical_assessment_overdue_days: int = 14) -> ApplicationSettingService:
     repository = FakeApplicationSettingRepository()
     repository.seed(
-        _make_setting(key="measurement_overdue_days", value=str(measurement_overdue_days))
+        _make_setting(key="physical_assessment_overdue_days", value=str(physical_assessment_overdue_days))
     )
     return ApplicationSettingService(repository)
 
@@ -199,7 +199,7 @@ def _make_service():
     assignment_repository = FakeAssignmentRepository()
     session_repository = FakeSessionRepository()
     check_in_repository = FakeCheckInRepository()
-    measurement_repository = FakeMeasurementRepository()
+    physical_assessment_repository = FakePhysicalAssessmentRepository()
     trainer_availability_repository = FakeTrainerAvailabilityRepository()
     dashboard_repository = FakeDashboardRepository()
     application_setting_service = _application_setting_service()
@@ -211,7 +211,7 @@ def _make_service():
         assignment_repository,
         session_repository,
         check_in_repository,
-        measurement_repository,
+        physical_assessment_repository,
         trainer_availability_repository,
         dashboard_repository,
         application_setting_service,
@@ -224,7 +224,7 @@ def _make_service():
         assignment_repository,
         session_repository,
         check_in_repository,
-        measurement_repository,
+        physical_assessment_repository,
         trainer_availability_repository,
     )
 
@@ -674,11 +674,11 @@ def test_get_summary_returns_zero_metrics_with_no_data():
     assert summary.sessions_this_week == 0
     assert summary.completed_sessions_this_month == 0
     assert summary.pending_check_ins == 0
-    assert summary.pending_measurements == 0
+    assert summary.pending_physical_assessments == 0
 
 
-def test_get_summary_counts_client_with_stale_measurement_as_pending():
-    service, trainer_repository, _, _, assignment_repository, _, _, measurement_repository, _ = _make_service()
+def test_get_summary_counts_client_with_stale_physical_assessment_as_pending():
+    service, trainer_repository, _, _, assignment_repository, _, _, physical_assessment_repository, _ = _make_service()
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     trainer_repository.seed(trainer)
@@ -689,8 +689,8 @@ def test_get_summary_counts_client_with_stale_measurement_as_pending():
     assignment_repository.seed_assignment(
         ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
     )
-    measurement_repository.seed(
-        _make_measurement(client.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc) - timedelta(days=30))
+    physical_assessment_repository.seed(
+        _make_physical_assessment(client.id, uuid.uuid4(), recorded_at=datetime.now(timezone.utc) - timedelta(days=30))
     )
 
     summary = asyncio.run(
@@ -699,10 +699,10 @@ def test_get_summary_counts_client_with_stale_measurement_as_pending():
         )
     )
 
-    assert summary.pending_measurements == 1
+    assert summary.pending_physical_assessments == 1
 
 
-def test_get_summary_excludes_never_measured_client_from_pending_measurements():
+def test_get_summary_excludes_never_measured_client_from_pending_physical_assessments():
     service, trainer_repository, _, _, assignment_repository, *_ = _make_service()
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
@@ -714,7 +714,7 @@ def test_get_summary_excludes_never_measured_client_from_pending_measurements():
     assignment_repository.seed_assignment(
         ClientTrainerAssignment(id=uuid.uuid4(), client_id=client.id, trainer_id=trainer.id, is_primary=True)
     )
-    # No measurement seeded at all - client has never been measured.
+    # No physical_assessment seeded at all - client has never been measured.
 
     summary = asyncio.run(
         service.get_summary(
@@ -722,7 +722,7 @@ def test_get_summary_excludes_never_measured_client_from_pending_measurements():
         )
     )
 
-    assert summary.pending_measurements == 0
+    assert summary.pending_physical_assessments == 0
 
 
 def test_get_performance_returns_zero_metrics_with_no_data():

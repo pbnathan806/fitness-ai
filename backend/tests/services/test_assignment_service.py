@@ -99,10 +99,8 @@ class FakeAssignmentRepository(AssignmentRepository):
         records = []
         for assignment in self._assignments.values():
             if assignment.trainer_id == trainer_id:
-                client, email = self._clients[assignment.client_id]
-                records.append(
-                    AssignedClientRecord(assignment=assignment, client=client, email=email)
-                )
+                client, _email = self._clients[assignment.client_id]
+                records.append(AssignedClientRecord(assignment=assignment, client=client))
         return records
 
     async def list_trainers_for_client(
@@ -430,6 +428,8 @@ def test_list_my_clients_returns_assigned_clients_for_trainer():
     assert len(clients) == 1
     assert clients[0].client_id == client.id
     assert clients[0].is_primary is True
+    assert not hasattr(clients[0], "email")
+    assert not hasattr(clients[0], "phone_number")
 
 
 def test_list_my_clients_rejects_non_trainer():

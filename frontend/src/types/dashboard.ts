@@ -6,7 +6,7 @@ export interface SuperAdminDashboardStats {
   total_trainers: number
   sessions_today: number
   upcoming_sessions_next_7_days: number
-  measurements_recorded_this_month: number
+  physical_assessments_recorded_this_month: number
   pending_check_ins: number
   clients_missing_check_ins_today: number
 }
@@ -51,7 +51,7 @@ export interface DashboardCheckIn {
   submitted_at: string
 }
 
-export interface DashboardMeasurement {
+export interface DashboardPhysicalAssessment {
   id: string
   client_id: string
   recorded_at: string
@@ -64,11 +64,11 @@ export interface DashboardClient {
 }
 
 /** Client-side composite feed item for the Recent Activity widget - the
- * backend has no unified activity/audit-log API, so check-ins and
- * measurements (each already timestamped) are merged and sorted here. */
+ * backend has no unified activity/audit-log API, so check-ins and physical
+ * assessments (each already timestamped) are merged and sorted here. */
 export interface ActivityItem {
   id: string
-  kind: "check-in" | "measurement"
+  kind: "check-in" | "physical-assessment"
   clientName: string
   timestamp: string
 }

@@ -63,8 +63,8 @@ class Client(Base):
     sessions: Mapped[list["Session"]] = relationship(  # noqa: F821
         "Session", foreign_keys="Session.client_id", back_populates="client"
     )
-    measurements: Mapped[list["Measurement"]] = relationship(  # noqa: F821
-        "Measurement", foreign_keys="Measurement.client_id", back_populates="client"
+    physical_assessments: Mapped[list["PhysicalAssessment"]] = relationship(  # noqa: F821
+        "PhysicalAssessment", foreign_keys="PhysicalAssessment.client_id", back_populates="client"
     )
     check_ins: Mapped[list["CheckIn"]] = relationship(  # noqa: F821
         "CheckIn", foreign_keys="CheckIn.client_id", back_populates="client"

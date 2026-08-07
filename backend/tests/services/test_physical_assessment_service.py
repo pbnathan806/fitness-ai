@@ -7,16 +7,16 @@ import pytest
 from core.constants import RoleName
 from models.application_setting import ApplicationSetting
 from models.client_trainer_assignment import ClientTrainerAssignment
-from models.measurement import Measurement
-from repositories.measurement_repository import LatestMeasurementRow, MeasurementRepository
+from models.physical_assessment import PhysicalAssessment
+from repositories.physical_assessment_repository import LatestPhysicalAssessmentRow, PhysicalAssessmentRepository
 from services.application_setting_service import ApplicationSettingService
-from services.measurement_service import (
+from services.physical_assessment_service import (
     ClientNotFoundError,
     ForbiddenError,
-    MeasurementEditWindowExpiredError,
-    MeasurementFieldsRequiredError,
-    MeasurementNotFoundError,
-    MeasurementService,
+    PhysicalAssessmentEditWindowExpiredError,
+    PhysicalAssessmentFieldsRequiredError,
+    PhysicalAssessmentNotFoundError,
+    PhysicalAssessmentService,
     TrainerNotAssignedError,
     TrainerNotFoundError,
 )
@@ -25,64 +25,64 @@ from tests.services.test_assignment_service import FakeAssignmentRepository, _ma
 from tests.services.test_client_service import FakeClientRepository, _make_client
 
 
-class FakeMeasurementRepository(MeasurementRepository):
+class FakePhysicalAssessmentRepository(PhysicalAssessmentRepository):
     def __init__(self) -> None:
-        self._measurements: dict[uuid.UUID, Measurement] = {}
-        self._latest_rows: list[LatestMeasurementRow] = []
+        self._physical_assessments: dict[uuid.UUID, PhysicalAssessment] = {}
+        self._latest_rows: list[LatestPhysicalAssessmentRow] = []
 
-    def seed(self, measurement: Measurement) -> None:
-        self._measurements[measurement.id] = measurement
+    def seed(self, physical_assessment: PhysicalAssessment) -> None:
+        self._physical_assessments[physical_assessment.id] = physical_assessment
 
-    def seed_latest_row(self, row: LatestMeasurementRow) -> None:
+    def seed_latest_row(self, row: LatestPhysicalAssessmentRow) -> None:
         self._latest_rows.append(row)
 
-    async def create(self, measurement: Measurement) -> Measurement:
+    async def create(self, physical_assessment: PhysicalAssessment) -> PhysicalAssessment:
         now = datetime.now(timezone.utc)
-        measurement.id = measurement.id or uuid.uuid4()
-        measurement.created_at = now
-        measurement.updated_at = now
-        self._measurements[measurement.id] = measurement
-        return measurement
+        physical_assessment.id = physical_assessment.id or uuid.uuid4()
+        physical_assessment.created_at = now
+        physical_assessment.updated_at = now
+        self._physical_assessments[physical_assessment.id] = physical_assessment
+        return physical_assessment
 
-    async def update(self, measurement: Measurement) -> Measurement:
-        measurement.updated_at = datetime.now(timezone.utc)
-        return measurement
+    async def update(self, physical_assessment: PhysicalAssessment) -> PhysicalAssessment:
+        physical_assessment.updated_at = datetime.now(timezone.utc)
+        return physical_assessment
 
-    async def get_by_id(self, measurement_id: uuid.UUID) -> Measurement | None:
-        return self._measurements.get(measurement_id)
+    async def get_by_id(self, physical_assessment_id: uuid.UUID) -> PhysicalAssessment | None:
+        return self._physical_assessments.get(physical_assessment_id)
 
-    async def list_paginated(self, offset: int, limit: int) -> tuple[list[Measurement], int]:
+    async def list_paginated(self, offset: int, limit: int) -> tuple[list[PhysicalAssessment], int]:
         ordered = sorted(
-            self._measurements.values(), key=lambda m: m.recorded_at, reverse=True
+            self._physical_assessments.values(), key=lambda m: m.recorded_at, reverse=True
         )
         return ordered[offset : offset + limit], len(ordered)
 
     async def list_for_client(
         self, client_id: uuid.UUID, offset: int, limit: int
-    ) -> tuple[list[Measurement], int]:
-        matched = [m for m in self._measurements.values() if m.client_id == client_id]
+    ) -> tuple[list[PhysicalAssessment], int]:
+        matched = [m for m in self._physical_assessments.values() if m.client_id == client_id]
         ordered = sorted(matched, key=lambda m: m.recorded_at, reverse=True)
         return ordered[offset : offset + limit], len(ordered)
 
     async def list_for_clients(
         self, client_ids: list[uuid.UUID], offset: int, limit: int
-    ) -> tuple[list[Measurement], int]:
-        matched = [m for m in self._measurements.values() if m.client_id in client_ids]
+    ) -> tuple[list[PhysicalAssessment], int]:
+        matched = [m for m in self._physical_assessments.values() if m.client_id in client_ids]
         ordered = sorted(matched, key=lambda m: m.recorded_at, reverse=True)
         return ordered[offset : offset + limit], len(ordered)
 
-    async def list_all_for_client(self, client_id: uuid.UUID) -> list[Measurement]:
-        matched = [m for m in self._measurements.values() if m.client_id == client_id]
+    async def list_all_for_client(self, client_id: uuid.UUID) -> list[PhysicalAssessment]:
+        matched = [m for m in self._physical_assessments.values() if m.client_id == client_id]
         return sorted(matched, key=lambda m: m.recorded_at, reverse=True)
 
     async def count_in_range(self, start: datetime, end: datetime) -> int:
-        return sum(1 for m in self._measurements.values() if start <= m.recorded_at < end)
+        return sum(1 for m in self._physical_assessments.values() if start <= m.recorded_at < end)
 
     async def get_latest_recorded_at_for_clients(
         self, client_ids: list[uuid.UUID] | None = None
     ) -> dict[uuid.UUID, datetime]:
         latest: dict[uuid.UUID, datetime] = {}
-        for m in self._measurements.values():
+        for m in self._physical_assessments.values():
             if client_ids is not None and m.client_id not in client_ids:
                 continue
             if m.client_id not in latest or m.recorded_at > latest[m.client_id]:
@@ -91,13 +91,13 @@ class FakeMeasurementRepository(MeasurementRepository):
 
     async def list_latest_for_clients(
         self, client_ids: list[uuid.UUID] | None
-    ) -> list[LatestMeasurementRow]:
+    ) -> list[LatestPhysicalAssessmentRow]:
         if client_ids is None:
             return list(self._latest_rows)
         return [row for row in self._latest_rows if row.client_id in client_ids]
 
 
-def _make_measurement(client_id: uuid.UUID, recorded_by: uuid.UUID, **overrides) -> Measurement:
+def _make_physical_assessment(client_id: uuid.UUID, recorded_by: uuid.UUID, **overrides) -> PhysicalAssessment:
     now = datetime.now(timezone.utc)
     defaults = dict(
         id=uuid.uuid4(),
@@ -118,20 +118,20 @@ def _make_measurement(client_id: uuid.UUID, recorded_by: uuid.UUID, **overrides)
         updated_at=now,
     )
     defaults.update(overrides)
-    return Measurement(**defaults)
+    return PhysicalAssessment(**defaults)
 
 
 def _make_application_setting_service(
-    measurement_overdue_days: int = 14, edit_window_days: int = 30
+    physical_assessment_overdue_days: int = 14, edit_window_days: int = 30
 ) -> ApplicationSettingService:
     repository = FakeApplicationSettingRepository()
     now = datetime.now(timezone.utc)
     repository.seed(
         ApplicationSetting(
             id=uuid.uuid4(),
-            key="measurement_overdue_days",
-            value=str(measurement_overdue_days),
-            description="Days after which measurements are overdue.",
+            key="physical_assessment_overdue_days",
+            value=str(physical_assessment_overdue_days),
+            description="Days after which physical_assessments are overdue.",
             created_at=now,
             updated_at=now,
         )
@@ -139,7 +139,7 @@ def _make_application_setting_service(
     repository.seed(
         ApplicationSetting(
             id=uuid.uuid4(),
-            key="measurement_edit_window_days",
+            key="physical_assessment_edit_window_days",
             value=str(edit_window_days),
             description="Edit window",
             created_at=now,
@@ -150,21 +150,21 @@ def _make_application_setting_service(
 
 
 def _make_service(
-    measurement_overdue_days: int = 14, edit_window_days: int = 30
+    physical_assessment_overdue_days: int = 14, edit_window_days: int = 30
 ) -> tuple[
-    MeasurementService, FakeMeasurementRepository, FakeClientRepository, FakeAssignmentRepository
+    PhysicalAssessmentService, FakePhysicalAssessmentRepository, FakeClientRepository, FakeAssignmentRepository
 ]:
-    measurement_repository = FakeMeasurementRepository()
+    physical_assessment_repository = FakePhysicalAssessmentRepository()
     client_repository = FakeClientRepository()
     assignment_repository = FakeAssignmentRepository()
     application_setting_service = _make_application_setting_service(
-        measurement_overdue_days, edit_window_days
+        physical_assessment_overdue_days, edit_window_days
     )
-    service = MeasurementService(
-        measurement_repository, client_repository, assignment_repository,
+    service = PhysicalAssessmentService(
+        physical_assessment_repository, client_repository, assignment_repository,
         application_setting_service,
     )
-    return service, measurement_repository, client_repository, assignment_repository
+    return service, physical_assessment_repository, client_repository, assignment_repository
 
 
 def _setup_assigned_pair(client_repository, assignment_repository):
@@ -201,15 +201,15 @@ def _create_kwargs(client_id: uuid.UUID, **overrides) -> dict:
     return defaults
 
 
-# --- create_measurement ------------------------------------------------------
+# --- create_physical_assessment ------------------------------------------------------
 
 
-def test_create_measurement_with_weight_only_succeeds_for_super_admin():
+def test_create_physical_assessment_with_weight_only_succeeds_for_super_admin():
     service, _, client_repository, assignment_repository = _make_service()
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
 
     detail = asyncio.run(
-        service.create_measurement(
+        service.create_physical_assessment(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
             **_create_kwargs(client.id, weight_kg=80),
@@ -221,12 +221,12 @@ def test_create_measurement_with_weight_only_succeeds_for_super_admin():
     assert detail.body_fat_percentage is None
 
 
-def test_create_measurement_with_multiple_fields_succeeds():
+def test_create_physical_assessment_with_multiple_fields_succeeds():
     service, _, client_repository, assignment_repository = _make_service()
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
 
     detail = asyncio.run(
-        service.create_measurement(
+        service.create_physical_assessment(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
             **_create_kwargs(
@@ -240,13 +240,13 @@ def test_create_measurement_with_multiple_fields_succeeds():
     assert detail.waist_cm == 92
 
 
-def test_create_measurement_rejects_empty_payload():
+def test_create_physical_assessment_rejects_empty_payload():
     service, _, client_repository, assignment_repository = _make_service()
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
 
-    with pytest.raises(MeasurementFieldsRequiredError):
+    with pytest.raises(PhysicalAssessmentFieldsRequiredError):
         asyncio.run(
-            service.create_measurement(
+            service.create_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
                 **_create_kwargs(client.id),
@@ -254,14 +254,14 @@ def test_create_measurement_rejects_empty_payload():
         )
 
 
-def test_create_measurement_succeeds_for_assigned_trainer():
+def test_create_physical_assessment_succeeds_for_assigned_trainer():
     service, _, client_repository, assignment_repository = _make_service()
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
 
     detail = asyncio.run(
-        service.create_measurement(
+        service.create_physical_assessment(
             actor_role=RoleName.TRAINER,
             actor_id=trainer_user_id,
             **_create_kwargs(client.id, weight_kg=75),
@@ -272,7 +272,7 @@ def test_create_measurement_succeeds_for_assigned_trainer():
     assert detail.recorded_by == trainer_user_id
 
 
-def test_create_measurement_rejects_unassigned_trainer():
+def test_create_physical_assessment_rejects_unassigned_trainer():
     service, _, client_repository, assignment_repository = _make_service()
     client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
@@ -283,7 +283,7 @@ def test_create_measurement_rejects_unassigned_trainer():
 
     with pytest.raises(TrainerNotAssignedError):
         asyncio.run(
-            service.create_measurement(
+            service.create_physical_assessment(
                 actor_role=RoleName.TRAINER,
                 actor_id=trainer_user_id,
                 **_create_kwargs(client.id, weight_kg=75),
@@ -291,13 +291,13 @@ def test_create_measurement_rejects_unassigned_trainer():
         )
 
 
-def test_create_measurement_rejects_client_role():
+def test_create_physical_assessment_rejects_client_role():
     service, _, client_repository, assignment_repository = _make_service()
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.create_measurement(
+            service.create_physical_assessment(
                 actor_role=RoleName.CLIENT,
                 actor_id=uuid.uuid4(),
                 **_create_kwargs(client.id, weight_kg=75),
@@ -305,12 +305,12 @@ def test_create_measurement_rejects_client_role():
         )
 
 
-def test_create_measurement_raises_when_client_missing():
+def test_create_physical_assessment_raises_when_client_missing():
     service, *_ = _make_service()
 
     with pytest.raises(ClientNotFoundError):
         asyncio.run(
-            service.create_measurement(
+            service.create_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
                 **_create_kwargs(uuid.uuid4(), weight_kg=75),
@@ -318,14 +318,14 @@ def test_create_measurement_raises_when_client_missing():
         )
 
 
-def test_create_measurement_raises_when_trainer_profile_missing():
+def test_create_physical_assessment_raises_when_trainer_profile_missing():
     service, _, client_repository, assignment_repository = _make_service()
     client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
 
     with pytest.raises(TrainerNotFoundError):
         asyncio.run(
-            service.create_measurement(
+            service.create_physical_assessment(
                 actor_role=RoleName.TRAINER,
                 actor_id=uuid.uuid4(),
                 **_create_kwargs(client.id, weight_kg=75),
@@ -333,16 +333,16 @@ def test_create_measurement_raises_when_trainer_profile_missing():
         )
 
 
-# --- list_measurements --------------------------------------------------------
+# --- list_physical_assessments --------------------------------------------------------
 
 
-def test_list_measurements_returns_all_for_super_admin():
-    service, measurement_repository, *_ = _make_service()
+def test_list_physical_assessments_returns_all_for_super_admin():
+    service, physical_assessment_repository, *_ = _make_service()
     for _ in range(3):
-        measurement_repository.seed(_make_measurement(uuid.uuid4(), uuid.uuid4()))
+        physical_assessment_repository.seed(_make_physical_assessment(uuid.uuid4(), uuid.uuid4()))
 
     result = asyncio.run(
-        service.list_measurements(
+        service.list_physical_assessments(
             actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), page=1, page_size=2
         )
     )
@@ -351,18 +351,18 @@ def test_list_measurements_returns_all_for_super_admin():
     assert len(result.items) == 2
 
 
-def test_list_measurements_returns_only_assigned_clients_for_trainer():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_list_physical_assessments_returns_only_assigned_clients_for_trainer():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(other_client, "other@example.com")
-    measurement_repository.seed(_make_measurement(client.id, trainer.id))
-    measurement_repository.seed(_make_measurement(other_client.id, uuid.uuid4()))
+    physical_assessment_repository.seed(_make_physical_assessment(client.id, trainer.id))
+    physical_assessment_repository.seed(_make_physical_assessment(other_client.id, uuid.uuid4()))
 
     result = asyncio.run(
-        service.list_measurements(
+        service.list_physical_assessments(
             actor_role=RoleName.TRAINER, actor_id=trainer_user_id, page=1, page_size=20
         )
     )
@@ -371,17 +371,17 @@ def test_list_measurements_returns_only_assigned_clients_for_trainer():
     assert result.items[0].client_id == client.id
 
 
-def test_list_measurements_returns_only_own_for_client():
-    service, measurement_repository, client_repository, _ = _make_service()
+def test_list_physical_assessments_returns_only_own_for_client():
+    service, physical_assessment_repository, client_repository, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
-    measurement_repository.seed(_make_measurement(client.id, uuid.uuid4()))
-    measurement_repository.seed(_make_measurement(other_client.id, uuid.uuid4()))
+    physical_assessment_repository.seed(_make_physical_assessment(client.id, uuid.uuid4()))
+    physical_assessment_repository.seed(_make_physical_assessment(other_client.id, uuid.uuid4()))
 
     result = asyncio.run(
-        service.list_measurements(
+        service.list_physical_assessments(
             actor_role=RoleName.CLIENT, actor_id=client_user_id, page=1, page_size=20
         )
     )
@@ -390,89 +390,89 @@ def test_list_measurements_returns_only_own_for_client():
     assert result.items[0].client_id == client.id
 
 
-# --- get_measurement -----------------------------------------------------------
+# --- get_physical_assessment -----------------------------------------------------------
 
 
-def test_get_measurement_succeeds_for_owning_client():
-    service, measurement_repository, client_repository, _ = _make_service()
+def test_get_physical_assessment_succeeds_for_owning_client():
+    service, physical_assessment_repository, client_repository, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     client_repository.seed(client, "client@example.com")
-    measurement = _make_measurement(client.id, uuid.uuid4())
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(client.id, uuid.uuid4())
+    physical_assessment_repository.seed(physical_assessment)
 
     detail = asyncio.run(
-        service.get_measurement(
-            actor_role=RoleName.CLIENT, actor_id=client_user_id, measurement_id=measurement.id
+        service.get_physical_assessment(
+            actor_role=RoleName.CLIENT, actor_id=client_user_id, physical_assessment_id=physical_assessment.id
         )
     )
 
-    assert detail.id == measurement.id
+    assert detail.id == physical_assessment.id
 
 
-def test_get_measurement_rejects_non_owning_client():
-    service, measurement_repository, client_repository, _ = _make_service()
+def test_get_physical_assessment_rejects_non_owning_client():
+    service, physical_assessment_repository, client_repository, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     client_repository.seed(client, "client@example.com")
-    measurement = _make_measurement(uuid.uuid4(), uuid.uuid4())
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(uuid.uuid4(), uuid.uuid4())
+    physical_assessment_repository.seed(physical_assessment)
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.get_measurement(
-                actor_role=RoleName.CLIENT, actor_id=client_user_id, measurement_id=measurement.id
+            service.get_physical_assessment(
+                actor_role=RoleName.CLIENT, actor_id=client_user_id, physical_assessment_id=physical_assessment.id
             )
         )
 
 
-def test_get_measurement_rejects_non_assigned_trainer():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_get_physical_assessment_rejects_non_assigned_trainer():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     trainer_user_id = uuid.uuid4()
     trainer = _make_trainer(user_id=trainer_user_id)
     assignment_repository.seed_trainer(trainer)
-    measurement = _make_measurement(uuid.uuid4(), uuid.uuid4())
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(uuid.uuid4(), uuid.uuid4())
+    physical_assessment_repository.seed(physical_assessment)
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.get_measurement(
+            service.get_physical_assessment(
                 actor_role=RoleName.TRAINER,
                 actor_id=trainer_user_id,
-                measurement_id=measurement.id,
+                physical_assessment_id=physical_assessment.id,
             )
         )
 
 
-def test_get_measurement_raises_not_found():
+def test_get_physical_assessment_raises_not_found():
     service, *_ = _make_service()
 
-    with pytest.raises(MeasurementNotFoundError):
+    with pytest.raises(PhysicalAssessmentNotFoundError):
         asyncio.run(
-            service.get_measurement(
+            service.get_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
-                measurement_id=uuid.uuid4(),
+                physical_assessment_id=uuid.uuid4(),
             )
         )
 
 
-# --- get_client_measurements (historical records) -----------------------------
+# --- get_client_physical_assessments (historical records) -----------------------------
 
 
-def test_get_client_measurements_preserves_full_history():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_get_client_physical_assessments_preserves_full_history():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
     now = datetime.now(timezone.utc)
-    first = _make_measurement(
+    first = _make_physical_assessment(
         client.id, trainer.id, weight_kg=85, recorded_at=now - timedelta(days=30)
     )
-    second = _make_measurement(
+    second = _make_physical_assessment(
         client.id, trainer.id, weight_kg=83, waist_cm=96, recorded_at=now - timedelta(days=15)
     )
-    third = _make_measurement(
+    third = _make_physical_assessment(
         client.id,
         trainer.id,
         weight_kg=81,
@@ -480,12 +480,12 @@ def test_get_client_measurements_preserves_full_history():
         body_fat_percentage=18,
         recorded_at=now,
     )
-    measurement_repository.seed(first)
-    measurement_repository.seed(second)
-    measurement_repository.seed(third)
+    physical_assessment_repository.seed(first)
+    physical_assessment_repository.seed(second)
+    physical_assessment_repository.seed(third)
 
     history = asyncio.run(
-        service.get_client_measurements(
+        service.get_client_physical_assessments(
             actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), client_id=client.id
         )
     )
@@ -494,7 +494,7 @@ def test_get_client_measurements_preserves_full_history():
     assert [m.weight_kg for m in history] == [81, 83, 85]
 
 
-def test_get_client_measurements_rejects_non_owning_client():
+def test_get_client_physical_assessments_rejects_non_owning_client():
     service, _, client_repository, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
@@ -504,30 +504,30 @@ def test_get_client_measurements_rejects_non_owning_client():
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.get_client_measurements(
+            service.get_client_physical_assessments(
                 actor_role=RoleName.CLIENT, actor_id=client_user_id, client_id=other_client.id
             )
         )
 
 
-# --- get_latest_measurement ----------------------------------------------------
+# --- get_latest_physical_assessment ----------------------------------------------------
 
 
-def test_get_latest_measurement_computes_change_from_previous():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_get_latest_physical_assessment_computes_change_from_previous():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
     now = datetime.now(timezone.utc)
-    older = _make_measurement(
+    older = _make_physical_assessment(
         client.id, trainer.id, weight_kg=82, waist_cm=94, recorded_at=now - timedelta(days=14)
     )
-    newest = _make_measurement(
+    newest = _make_physical_assessment(
         client.id, trainer.id, weight_kg=80, waist_cm=92, recorded_at=now
     )
-    measurement_repository.seed(older)
-    measurement_repository.seed(newest)
+    physical_assessment_repository.seed(older)
+    physical_assessment_repository.seed(newest)
 
     latest = asyncio.run(
-        service.get_latest_measurement(
+        service.get_latest_physical_assessment(
             actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), client_id=client.id
         )
     )
@@ -540,13 +540,13 @@ def test_get_latest_measurement_computes_change_from_previous():
     assert latest.waist_change == -2
 
 
-def test_get_latest_measurement_without_previous_returns_null_change():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_get_latest_physical_assessment_without_previous_returns_null_change():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement_repository.seed(_make_measurement(client.id, trainer.id, weight_kg=80))
+    physical_assessment_repository.seed(_make_physical_assessment(client.id, trainer.id, weight_kg=80))
 
     latest = asyncio.run(
-        service.get_latest_measurement(
+        service.get_latest_physical_assessment(
             actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), client_id=client.id
         )
     )
@@ -556,72 +556,72 @@ def test_get_latest_measurement_without_previous_returns_null_change():
     assert latest.weight_change is None
 
 
-def test_get_latest_measurement_raises_not_found_without_any_measurements():
+def test_get_latest_physical_assessment_raises_not_found_without_any_physical_assessments():
     service, _, client_repository, assignment_repository = _make_service()
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
 
-    with pytest.raises(MeasurementNotFoundError):
+    with pytest.raises(PhysicalAssessmentNotFoundError):
         asyncio.run(
-            service.get_latest_measurement(
+            service.get_latest_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4(), client_id=client.id
             )
         )
 
 
-def test_get_latest_measurement_rejects_non_owning_client():
-    service, measurement_repository, client_repository, _ = _make_service()
+def test_get_latest_physical_assessment_rejects_non_owning_client():
+    service, physical_assessment_repository, client_repository, _ = _make_service()
     client_user_id = uuid.uuid4()
     client = _make_client(user_id=client_user_id)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(client, "client@example.com")
     client_repository.seed(other_client, "other@example.com")
-    measurement_repository.seed(_make_measurement(other_client.id, uuid.uuid4()))
+    physical_assessment_repository.seed(_make_physical_assessment(other_client.id, uuid.uuid4()))
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.get_latest_measurement(
+            service.get_latest_physical_assessment(
                 actor_role=RoleName.CLIENT, actor_id=client_user_id, client_id=other_client.id
             )
         )
 
 
-# --- update_measurement ---------------------------------------------------------
+# --- update_physical_assessment ---------------------------------------------------------
 
 
-def test_update_measurement_succeeds_for_super_admin_within_edit_window():
-    service, measurement_repository, client_repository, assignment_repository = _make_service(
+def test_update_physical_assessment_succeeds_for_super_admin_within_edit_window():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service(
         edit_window_days=30
     )
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement = _make_measurement(client.id, trainer.id, weight_kg=80)
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(client.id, trainer.id, weight_kg=80)
+    physical_assessment_repository.seed(physical_assessment)
 
     detail = asyncio.run(
-        service.update_measurement(
+        service.update_physical_assessment(
             actor_role=RoleName.SUPER_ADMIN,
             actor_id=uuid.uuid4(),
-            measurement_id=measurement.id,
+            physical_assessment_id=physical_assessment.id,
             values={"weight_kg": 78},
         )
     )
 
     assert detail.weight_kg == 78
-    assert detail.waist_cm == measurement.waist_cm  # untouched fields preserved
+    assert detail.waist_cm == physical_assessment.waist_cm  # untouched fields preserved
 
 
-def test_update_measurement_succeeds_for_assigned_trainer():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_update_physical_assessment_succeeds_for_assigned_trainer():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
-    measurement = _make_measurement(client.id, trainer.id, weight_kg=80)
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(client.id, trainer.id, weight_kg=80)
+    physical_assessment_repository.seed(physical_assessment)
 
     detail = asyncio.run(
-        service.update_measurement(
+        service.update_physical_assessment(
             actor_role=RoleName.TRAINER,
             actor_id=trainer_user_id,
-            measurement_id=measurement.id,
+            physical_assessment_id=physical_assessment.id,
             values={"weight_kg": 79},
         )
     )
@@ -629,117 +629,117 @@ def test_update_measurement_succeeds_for_assigned_trainer():
     assert detail.weight_kg == 79
 
 
-def test_update_measurement_rejects_unassigned_trainer():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_update_physical_assessment_rejects_unassigned_trainer():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, *_ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement = _make_measurement(client.id, uuid.uuid4(), weight_kg=80)
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(client.id, uuid.uuid4(), weight_kg=80)
+    physical_assessment_repository.seed(physical_assessment)
     other_trainer_user_id = uuid.uuid4()
     assignment_repository.seed_trainer(_make_trainer(user_id=other_trainer_user_id))
 
     with pytest.raises(TrainerNotAssignedError):
         asyncio.run(
-            service.update_measurement(
+            service.update_physical_assessment(
                 actor_role=RoleName.TRAINER,
                 actor_id=other_trainer_user_id,
-                measurement_id=measurement.id,
+                physical_assessment_id=physical_assessment.id,
                 values={"weight_kg": 79},
             )
         )
 
 
-def test_update_measurement_rejects_client_role():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_update_physical_assessment_rejects_client_role():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement = _make_measurement(client.id, trainer.id, weight_kg=80)
-    measurement_repository.seed(measurement)
+    physical_assessment = _make_physical_assessment(client.id, trainer.id, weight_kg=80)
+    physical_assessment_repository.seed(physical_assessment)
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.update_measurement(
+            service.update_physical_assessment(
                 actor_role=RoleName.CLIENT,
                 actor_id=uuid.uuid4(),
-                measurement_id=measurement.id,
+                physical_assessment_id=physical_assessment.id,
                 values={"weight_kg": 79},
             )
         )
 
 
-def test_update_measurement_raises_not_found():
+def test_update_physical_assessment_raises_not_found():
     service, *_ = _make_service()
 
-    with pytest.raises(MeasurementNotFoundError):
+    with pytest.raises(PhysicalAssessmentNotFoundError):
         asyncio.run(
-            service.update_measurement(
+            service.update_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
-                measurement_id=uuid.uuid4(),
+                physical_assessment_id=uuid.uuid4(),
                 values={"weight_kg": 79},
             )
         )
 
 
-def test_update_measurement_rejects_clearing_all_fields():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_update_physical_assessment_rejects_clearing_all_fields():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement = _make_measurement(
+    physical_assessment = _make_physical_assessment(
         client.id, trainer.id, weight_kg=80, body_fat_percentage=None, chest_cm=None,
         waist_cm=None, hips_cm=None, left_arm_cm=None, right_arm_cm=None,
         left_thigh_cm=None, right_thigh_cm=None, resting_heart_rate=None,
     )
-    measurement_repository.seed(measurement)
+    physical_assessment_repository.seed(physical_assessment)
 
-    with pytest.raises(MeasurementFieldsRequiredError):
+    with pytest.raises(PhysicalAssessmentFieldsRequiredError):
         asyncio.run(
-            service.update_measurement(
+            service.update_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
-                measurement_id=measurement.id,
+                physical_assessment_id=physical_assessment.id,
                 values={"weight_kg": None},
             )
         )
 
 
-def test_update_measurement_rejects_after_edit_window_expired():
-    service, measurement_repository, client_repository, assignment_repository = _make_service(
+def test_update_physical_assessment_rejects_after_edit_window_expired():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service(
         edit_window_days=1
     )
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement = _make_measurement(
+    physical_assessment = _make_physical_assessment(
         client.id, trainer.id, weight_kg=80,
         recorded_at=datetime.now(timezone.utc) - timedelta(days=5),
     )
-    measurement_repository.seed(measurement)
+    physical_assessment_repository.seed(physical_assessment)
 
-    with pytest.raises(MeasurementEditWindowExpiredError):
+    with pytest.raises(PhysicalAssessmentEditWindowExpiredError):
         asyncio.run(
-            service.update_measurement(
+            service.update_physical_assessment(
                 actor_role=RoleName.SUPER_ADMIN,
                 actor_id=uuid.uuid4(),
-                measurement_id=measurement.id,
+                physical_assessment_id=physical_assessment.id,
                 values={"weight_kg": 79},
             )
         )
 
 
-# --- list_pending_measurements ---------------------------------------------------
+# --- list_pending_physical_assessments ---------------------------------------------------
 
 
-def test_list_pending_measurements_returns_all_for_super_admin():
-    service, measurement_repository, client_repository, assignment_repository = _make_service(
-        measurement_overdue_days=14
+def test_list_pending_physical_assessments_returns_all_for_super_admin():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service(
+        physical_assessment_overdue_days=14
     )
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(other_client, "other@example.com")
     overdue_recorded_at = datetime.now(timezone.utc) - timedelta(days=20)
-    measurement_repository.seed_latest_row(
-        LatestMeasurementRow(
+    physical_assessment_repository.seed_latest_row(
+        LatestPhysicalAssessmentRow(
             client_id=client.id, client_name="Jane Doe", recorded_at=overdue_recorded_at
         )
     )
-    measurement_repository.seed_latest_row(
-        LatestMeasurementRow(
+    physical_assessment_repository.seed_latest_row(
+        LatestPhysicalAssessmentRow(
             client_id=other_client.id,
             client_name="Other Client",
             recorded_at=datetime.now(timezone.utc),
@@ -747,7 +747,7 @@ def test_list_pending_measurements_returns_all_for_super_admin():
     )
 
     result = asyncio.run(
-        service.list_pending_measurements(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
+        service.list_pending_physical_assessments(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
     )
 
     assert len(result) == 1
@@ -755,40 +755,40 @@ def test_list_pending_measurements_returns_all_for_super_admin():
     assert result[0].days_overdue == 6
 
 
-def test_list_pending_measurements_scoped_to_assigned_clients_for_trainer():
-    service, measurement_repository, client_repository, assignment_repository = _make_service()
+def test_list_pending_physical_assessments_scoped_to_assigned_clients_for_trainer():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(other_client, "other@example.com")
     overdue_recorded_at = datetime.now(timezone.utc) - timedelta(days=20)
-    measurement_repository.seed_latest_row(
-        LatestMeasurementRow(
+    physical_assessment_repository.seed_latest_row(
+        LatestPhysicalAssessmentRow(
             client_id=client.id, client_name="Jane Doe", recorded_at=overdue_recorded_at
         )
     )
-    measurement_repository.seed_latest_row(
-        LatestMeasurementRow(
+    physical_assessment_repository.seed_latest_row(
+        LatestPhysicalAssessmentRow(
             client_id=other_client.id, client_name="Other Client", recorded_at=overdue_recorded_at
         )
     )
 
     result = asyncio.run(
-        service.list_pending_measurements(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+        service.list_pending_physical_assessments(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
     )
 
     assert len(result) == 1
     assert result[0].client_id == client.id
 
 
-def test_list_pending_measurements_excludes_clients_within_window():
-    service, measurement_repository, client_repository, assignment_repository = _make_service(
-        measurement_overdue_days=14
+def test_list_pending_physical_assessments_excludes_clients_within_window():
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service(
+        physical_assessment_overdue_days=14
     )
     client, trainer, _ = _setup_assigned_pair(client_repository, assignment_repository)
-    measurement_repository.seed_latest_row(
-        LatestMeasurementRow(
+    physical_assessment_repository.seed_latest_row(
+        LatestPhysicalAssessmentRow(
             client_id=client.id,
             client_name="Jane Doe",
             recorded_at=datetime.now(timezone.utc) - timedelta(days=5),
@@ -796,16 +796,16 @@ def test_list_pending_measurements_excludes_clients_within_window():
     )
 
     result = asyncio.run(
-        service.list_pending_measurements(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
+        service.list_pending_physical_assessments(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
     )
 
     assert result == []
 
 
-def test_list_pending_measurements_rejects_client_role():
+def test_list_pending_physical_assessments_rejects_client_role():
     service, *_ = _make_service()
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
-            service.list_pending_measurements(actor_role=RoleName.CLIENT, actor_id=uuid.uuid4())
+            service.list_pending_physical_assessments(actor_role=RoleName.CLIENT, actor_id=uuid.uuid4())
         )

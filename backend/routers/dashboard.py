@@ -17,9 +17,9 @@ from repositories.dashboard_repository import (
     DashboardRepository,
     SQLAlchemyDashboardRepository,
 )
-from repositories.measurement_repository import (
-    MeasurementRepository,
-    SQLAlchemyMeasurementRepository,
+from repositories.physical_assessment_repository import (
+    PhysicalAssessmentRepository,
+    SQLAlchemyPhysicalAssessmentRepository,
 )
 from repositories.session_repository import SessionRepository, SQLAlchemySessionRepository
 from repositories.subscription_repository import (
@@ -67,10 +67,10 @@ def get_check_in_repository(session: AsyncSession = Depends(get_db)) -> CheckInR
     return SQLAlchemyCheckInRepository(session)
 
 
-def get_measurement_repository(
+def get_physical_assessment_repository(
     session: AsyncSession = Depends(get_db),
-) -> MeasurementRepository:
-    return SQLAlchemyMeasurementRepository(session)
+) -> PhysicalAssessmentRepository:
+    return SQLAlchemyPhysicalAssessmentRepository(session)
 
 
 def get_subscription_repository(
@@ -99,7 +99,9 @@ def get_dashboard_service(
     assignment_repository: AssignmentRepository = Depends(get_assignment_repository),
     session_repository: SessionRepository = Depends(get_session_repository),
     check_in_repository: CheckInRepository = Depends(get_check_in_repository),
-    measurement_repository: MeasurementRepository = Depends(get_measurement_repository),
+    physical_assessment_repository: PhysicalAssessmentRepository = Depends(
+        get_physical_assessment_repository
+    ),
     subscription_repository: SubscriptionRepository = Depends(get_subscription_repository),
     application_setting_service: ApplicationSettingService = Depends(
         get_application_setting_service
@@ -111,7 +113,7 @@ def get_dashboard_service(
         assignment_repository,
         session_repository,
         check_in_repository,
-        measurement_repository,
+        physical_assessment_repository,
         subscription_repository,
         application_setting_service,
     )
@@ -124,7 +126,7 @@ def _to_trainer_response(detail: TrainerDashboard) -> TrainerDashboardResponse:
         sessions_today=detail.sessions_today,
         upcoming_sessions_next_7_days=detail.upcoming_sessions_next_7_days,
         pending_check_ins=detail.pending_check_ins,
-        pending_measurements=detail.pending_measurements,
+        pending_physical_assessments=detail.pending_physical_assessments,
     )
 
 
@@ -137,11 +139,11 @@ def _to_super_admin_response(detail: SuperAdminDashboard) -> SuperAdminDashboard
         total_trainers=detail.total_trainers,
         sessions_today=detail.sessions_today,
         upcoming_sessions_next_7_days=detail.upcoming_sessions_next_7_days,
-        measurements_recorded_this_month=detail.measurements_recorded_this_month,
+        physical_assessments_recorded_this_month=detail.physical_assessments_recorded_this_month,
         pending_check_ins=detail.pending_check_ins,
         clients_missing_check_ins_today=detail.clients_missing_check_ins_today,
-        pending_measurements=detail.pending_measurements,
-        clients_missing_measurements=detail.clients_missing_measurements,
+        pending_physical_assessments=detail.pending_physical_assessments,
+        clients_missing_physical_assessments=detail.clients_missing_physical_assessments,
     )
 
 
@@ -150,8 +152,8 @@ def _to_client_response(detail: ClientDashboard) -> ClientDashboardResponse:
         completed_check_ins=detail.completed_check_ins,
         expected_check_ins=detail.expected_check_ins,
         adherence_percentage=detail.adherence_percentage,
-        latest_measurement_date=detail.latest_measurement_date,
-        next_measurement_due_date=detail.next_measurement_due_date,
+        latest_physical_assessment_date=detail.latest_physical_assessment_date,
+        next_physical_assessment_due_date=detail.next_physical_assessment_due_date,
     )
 
 

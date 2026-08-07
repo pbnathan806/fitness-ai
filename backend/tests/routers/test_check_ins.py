@@ -656,13 +656,13 @@ def test_list_check_ins_succeeds_for_super_admin():
 # --- Existing functionality remains unaffected ----------------------------------
 
 
-def test_existing_measurements_endpoint_unaffected_by_check_ins_module():
+def test_existing_physical_assessments_endpoint_unaffected_by_check_ins_module():
     test_client = TestClient(app)
 
-    response = test_client.get("/api/v1/measurements")
+    response = test_client.get("/api/v1/physical-assessments")
 
     # Unauthenticated request still behaves exactly as before (401), proving
-    # the measurements router/module was not disturbed by adding check-ins.
+    # the physical assessments router/module was not disturbed by adding check-ins.
     assert response.status_code == 401
 
 

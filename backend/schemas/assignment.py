@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class AssignmentCreateRequest(BaseModel):
@@ -33,8 +33,6 @@ class AssignedClientResponse(BaseModel):
     client_id: uuid.UUID
     first_name: str
     last_name: str
-    email: EmailStr
-    phone_number: str | None
     timezone: str
     is_primary: bool
 

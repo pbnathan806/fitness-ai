@@ -37,9 +37,9 @@ export function SuperAdminDashboardPage() {
     queryFn: dashboardService.listRecentCheckIns,
   })
 
-  const measurementsQuery = useQuery({
-    queryKey: ["dashboard", "super-admin", "recent-measurements"],
-    queryFn: dashboardService.listRecentMeasurements,
+  const physicalAssessmentsQuery = useQuery({
+    queryKey: ["dashboard", "super-admin", "recent-physical-assessments"],
+    queryFn: dashboardService.listRecentPhysicalAssessments,
   })
 
   const clientsQuery = useQuery({
@@ -55,8 +55,8 @@ export function SuperAdminDashboardPage() {
     return map
   }, [clientsQuery.data])
 
-  const activityIsLoading = checkInsQuery.isLoading || measurementsQuery.isLoading
-  const activityIsError = checkInsQuery.isError || measurementsQuery.isError
+  const activityIsLoading = checkInsQuery.isLoading || physicalAssessmentsQuery.isLoading
+  const activityIsError = checkInsQuery.isError || physicalAssessmentsQuery.isError
 
   if (statsQuery.isError) {
     return (
@@ -93,8 +93,8 @@ export function SuperAdminDashboardPage() {
               icon={CalendarRange}
             />
             <StatCard
-              label="Measurements This Month"
-              value={stats.measurements_recorded_this_month}
+              label="Physical Assessments This Month"
+              value={stats.physical_assessments_recorded_this_month}
               icon={Ruler}
             />
             <StatCard
@@ -124,13 +124,13 @@ export function SuperAdminDashboardPage() {
           />
           <RecentActivityWidget
             checkIns={checkInsQuery.data}
-            measurements={measurementsQuery.data}
+            physicalAssessments={physicalAssessmentsQuery.data}
             clientNameById={clientNameById}
             isLoading={activityIsLoading}
             isError={activityIsError}
             onRetry={() => {
               checkInsQuery.refetch()
-              measurementsQuery.refetch()
+              physicalAssessmentsQuery.refetch()
             }}
           />
           <StaleSubscriptionsWidget clientNameById={clientNameById} />

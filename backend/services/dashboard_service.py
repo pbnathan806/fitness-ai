@@ -8,13 +8,13 @@ from repositories.assignment_repository import AssignmentRepository
 from repositories.check_in_repository import CheckInRepository
 from repositories.client_repository import ClientRepository
 from repositories.dashboard_repository import DashboardRepository
-from repositories.measurement_repository import MeasurementRepository
+from repositories.physical_assessment_repository import PhysicalAssessmentRepository
 from repositories.session_repository import SessionRepository
 from repositories.subscription_repository import SubscriptionRepository
 from services.application_setting_service import ApplicationSettingService
 from utils.dashboard import (
     classify_client_state,
-    is_measurement_overdue,
+    is_physical_assessment_overdue,
     ist_month_range_utc,
     ist_next_days_range_utc,
     ist_today_range_utc,
@@ -41,7 +41,7 @@ class TrainerDashboard:
     sessions_today: int
     upcoming_sessions_next_7_days: int
     pending_check_ins: int
-    pending_measurements: int
+    pending_physical_assessments: int
 
 
 @dataclass(frozen=True)
@@ -53,11 +53,11 @@ class SuperAdminDashboard:
     total_trainers: int
     sessions_today: int
     upcoming_sessions_next_7_days: int
-    measurements_recorded_this_month: int
+    physical_assessments_recorded_this_month: int
     pending_check_ins: int
     clients_missing_check_ins_today: int
-    pending_measurements: int
-    clients_missing_measurements: int
+    pending_physical_assessments: int
+    clients_missing_physical_assessments: int
 
 
 @dataclass(frozen=True)
@@ -65,14 +65,14 @@ class ClientDashboard:
     completed_check_ins: int
     expected_check_ins: int
     adherence_percentage: int
-    latest_measurement_date: date | None
-    next_measurement_due_date: date | None
+    latest_physical_assessment_date: date | None
+    next_physical_assessment_due_date: date | None
 
 
 class DashboardService:
     """Read-only aggregate dashboards for the three Version-1 roles (Task-21).
 
-    Client-state (ACTIVE/EXPIRED/INACTIVE) and measurement-overdue
+    Client-state (ACTIVE/EXPIRED/INACTIVE) and physical-assessment-overdue
     calculations read their thresholds from ApplicationSettingService
     (Task-20) instead of hardcoding them, per the acceptance criteria of
     both tasks. Trainer and Super Admin day/week/month boundaries are framed
@@ -87,7 +87,7 @@ class DashboardService:
         assignment_repository: AssignmentRepository,
         session_repository: SessionRepository,
         check_in_repository: CheckInRepository,
-        measurement_repository: MeasurementRepository,
+        physical_assessment_repository: PhysicalAssessmentRepository,
         subscription_repository: SubscriptionRepository,
         application_setting_service: ApplicationSettingService,
     ) -> None:
@@ -96,7 +96,7 @@ class DashboardService:
         self._assignment_repository = assignment_repository
         self._session_repository = session_repository
         self._check_in_repository = check_in_repository
-        self._measurement_repository = measurement_repository
+        self._physical_assessment_repository = physical_assessment_repository
         self._subscription_repository = subscription_repository
         self._application_setting_service = application_setting_service
 
@@ -121,8 +121,8 @@ class DashboardService:
         subscription_expired_days = await self._application_setting_service.get_int(
             "subscription_expired_days"
         )
-        measurement_overdue_days = await self._application_setting_service.get_int(
-            "measurement_overdue_days"
+        physical_assessment_overdue_days = await self._application_setting_service.get_int(
+            "physical_assessment_overdue_days"
         )
 
         end_dates = await self._subscription_repository.get_latest_end_dates_for_clients(
@@ -135,17 +135,20 @@ class DashboardService:
             == "ACTIVE"
         )
 
-        # Clients with at least one measurement recorded; a client never
-        # measured at all is "missing", not "pending" - excluded here so it
-        # isn't double-counted as overdue (matches the Super Admin dashboard
-        # and GET /measurements/pending, which draw the same distinction).
-        latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients(
-            client_ids
+        # Clients with at least one physical assessment recorded; a client
+        # never assessed at all is "missing", not "pending" - excluded here
+        # so it isn't double-counted as overdue (matches the Super Admin
+        # dashboard and GET /physical-assessments/pending, which draw the
+        # same distinction).
+        latest_physical_assessments = (
+            await self._physical_assessment_repository.get_latest_recorded_at_for_clients(
+                client_ids
+            )
         )
-        pending_measurements = sum(
+        pending_physical_assessments = sum(
             1
-            for recorded_at in latest_measurements.values()
-            if is_measurement_overdue(recorded_at, today, measurement_overdue_days)
+            for recorded_at in latest_physical_assessments.values()
+            if is_physical_assessment_overdue(recorded_at, today, physical_assessment_overdue_days)
         )
 
         sessions_today = await self._session_repository.count_in_range(
@@ -162,7 +165,7 @@ class DashboardService:
             sessions_today=sessions_today,
             upcoming_sessions_next_7_days=upcoming_sessions_next_7_days,
             pending_check_ins=pending_check_ins,
-            pending_measurements=pending_measurements,
+            pending_physical_assessments=pending_physical_assessments,
         )
 
     async def get_super_admin_dashboard(self, actor_role: str | None) -> SuperAdminDashboard:
@@ -178,8 +181,8 @@ class DashboardService:
         subscription_expired_days = await self._application_setting_service.get_int(
             "subscription_expired_days"
         )
-        measurement_overdue_days = await self._application_setting_service.get_int(
-            "measurement_overdue_days"
+        physical_assessment_overdue_days = await self._application_setting_service.get_int(
+            "physical_assessment_overdue_days"
         )
 
         total_clients = await self._client_repository.count_all()
@@ -202,24 +205,26 @@ class DashboardService:
         upcoming_sessions_next_7_days = await self._session_repository.count_in_range(
             week_start, week_end, exclude_cancelled=True
         )
-        measurements_recorded_this_month = await self._measurement_repository.count_in_range(
-            month_start, month_end
+        physical_assessments_recorded_this_month = (
+            await self._physical_assessment_repository.count_in_range(month_start, month_end)
         )
         pending_check_ins = await self._check_in_repository.count_pending(None, now)
         clients_missing_check_ins_today = await self._dashboard_repository.count_pending_check_ins(
             None, today_start, today_end, now
         )
 
-        # Clients with at least one measurement recorded; any client not
-        # among these keys has never been measured at all ("missing"), kept
-        # distinct from "pending" (measured before, but now overdue) so the
-        # two dashboard tiles never double-count the same client.
-        latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients()
-        clients_missing_measurements = total_clients - len(latest_measurements)
-        pending_measurements = sum(
+        # Clients with at least one physical assessment recorded; any client
+        # not among these keys has never been assessed at all ("missing"),
+        # kept distinct from "pending" (assessed before, but now overdue) so
+        # the two dashboard tiles never double-count the same client.
+        latest_physical_assessments = (
+            await self._physical_assessment_repository.get_latest_recorded_at_for_clients()
+        )
+        clients_missing_physical_assessments = total_clients - len(latest_physical_assessments)
+        pending_physical_assessments = sum(
             1
-            for recorded_at in latest_measurements.values()
-            if is_measurement_overdue(recorded_at, today, measurement_overdue_days)
+            for recorded_at in latest_physical_assessments.values()
+            if is_physical_assessment_overdue(recorded_at, today, physical_assessment_overdue_days)
         )
 
         return SuperAdminDashboard(
@@ -230,11 +235,11 @@ class DashboardService:
             total_trainers=total_trainers,
             sessions_today=sessions_today,
             upcoming_sessions_next_7_days=upcoming_sessions_next_7_days,
-            measurements_recorded_this_month=measurements_recorded_this_month,
+            physical_assessments_recorded_this_month=physical_assessments_recorded_this_month,
             pending_check_ins=pending_check_ins,
             clients_missing_check_ins_today=clients_missing_check_ins_today,
-            pending_measurements=pending_measurements,
-            clients_missing_measurements=clients_missing_measurements,
+            pending_physical_assessments=pending_physical_assessments,
+            clients_missing_physical_assessments=clients_missing_physical_assessments,
         )
 
     async def get_client_dashboard(
@@ -256,21 +261,23 @@ class DashboardService:
             round(completed_check_ins / expected_check_ins * 100) if expected_check_ins > 0 else 0
         )
 
-        measurement_overdue_days = await self._application_setting_service.get_int(
-            "measurement_overdue_days"
+        physical_assessment_overdue_days = await self._application_setting_service.get_int(
+            "physical_assessment_overdue_days"
         )
-        latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients(
-            [client.id]
+        latest_physical_assessments = (
+            await self._physical_assessment_repository.get_latest_recorded_at_for_clients(
+                [client.id]
+            )
         )
-        latest_recorded_at = latest_measurements.get(client.id)
-        latest_measurement_date = (
+        latest_recorded_at = latest_physical_assessments.get(client.id)
+        latest_physical_assessment_date = (
             latest_recorded_at.astimezone(ZoneInfo(client.timezone)).date()
             if latest_recorded_at is not None
             else None
         )
-        next_measurement_due_date = (
-            latest_measurement_date + timedelta(days=measurement_overdue_days)
-            if latest_measurement_date is not None
+        next_physical_assessment_due_date = (
+            latest_physical_assessment_date + timedelta(days=physical_assessment_overdue_days)
+            if latest_physical_assessment_date is not None
             else None
         )
 
@@ -278,6 +285,6 @@ class DashboardService:
             completed_check_ins=completed_check_ins,
             expected_check_ins=expected_check_ins,
             adherence_percentage=adherence_percentage,
-            latest_measurement_date=latest_measurement_date,
-            next_measurement_due_date=next_measurement_due_date,
+            latest_physical_assessment_date=latest_physical_assessment_date,
+            next_physical_assessment_due_date=next_physical_assessment_due_date,
         )

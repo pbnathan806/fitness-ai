@@ -9,7 +9,7 @@ from models.trainer_profile import TrainerProfile
 from repositories.assignment_repository import AssignmentRepository
 from repositories.check_in_repository import CheckInRepository
 from repositories.dashboard_repository import DashboardRepository
-from repositories.measurement_repository import MeasurementRepository
+from repositories.physical_assessment_repository import PhysicalAssessmentRepository
 from repositories.role_repository import RoleRepository
 from repositories.session_repository import SessionRepository
 from repositories.trainer_availability_repository import TrainerAvailabilityRepository
@@ -20,7 +20,7 @@ from utils.dashboard import (
     client_week_range_utc,
     ist_month_range_utc,
     ist_today_range_utc,
-    is_measurement_overdue,
+    is_physical_assessment_overdue,
 )
 from utils.subscription import current_india_date
 
@@ -85,7 +85,7 @@ class TrainerSummary:
     sessions_this_week: int
     completed_sessions_this_month: int
     pending_check_ins: int
-    pending_measurements: int
+    pending_physical_assessments: int
 
 
 @dataclass(frozen=True)
@@ -167,7 +167,7 @@ class TrainerService:
         assignment_repository: AssignmentRepository,
         session_repository: SessionRepository,
         check_in_repository: CheckInRepository,
-        measurement_repository: MeasurementRepository,
+        physical_assessment_repository: PhysicalAssessmentRepository,
         trainer_availability_repository: TrainerAvailabilityRepository,
         dashboard_repository: DashboardRepository,
         application_setting_service: ApplicationSettingService,
@@ -178,7 +178,7 @@ class TrainerService:
         self._assignment_repository = assignment_repository
         self._session_repository = session_repository
         self._check_in_repository = check_in_repository
-        self._measurement_repository = measurement_repository
+        self._physical_assessment_repository = physical_assessment_repository
         self._trainer_availability_repository = trainer_availability_repository
         self._dashboard_repository = dashboard_repository
         self._application_setting_service = application_setting_service
@@ -412,21 +412,24 @@ class TrainerService:
             client_ids, today_start, today_end, now
         )
 
-        measurement_overdue_days = await self._application_setting_service.get_int(
-            "measurement_overdue_days"
+        physical_assessment_overdue_days = await self._application_setting_service.get_int(
+            "physical_assessment_overdue_days"
         )
-        # Clients with at least one measurement recorded; a client never
-        # measured at all is "missing", not "pending" - excluded here so it
-        # isn't double-counted as overdue (matches the dashboards and
-        # GET /measurements/pending, which draw the same distinction).
-        latest_measurements = await self._measurement_repository.get_latest_recorded_at_for_clients(
-            client_ids
+        # Clients with at least one physical assessment recorded; a client
+        # never assessed at all is "missing", not "pending" - excluded here
+        # so it isn't double-counted as overdue (matches the dashboards and
+        # GET /physical-assessments/pending, which draw the same
+        # distinction).
+        latest_physical_assessments = (
+            await self._physical_assessment_repository.get_latest_recorded_at_for_clients(
+                client_ids
+            )
         )
         today = current_india_date()
-        pending_measurements = sum(
+        pending_physical_assessments = sum(
             1
-            for recorded_at in latest_measurements.values()
-            if is_measurement_overdue(recorded_at, today, measurement_overdue_days)
+            for recorded_at in latest_physical_assessments.values()
+            if is_physical_assessment_overdue(recorded_at, today, physical_assessment_overdue_days)
         )
 
         return TrainerSummary(
@@ -434,7 +437,7 @@ class TrainerService:
             sessions_this_week=sessions_this_week,
             completed_sessions_this_month=completed_sessions_this_month,
             pending_check_ins=pending_check_ins,
-            pending_measurements=pending_measurements,
+            pending_physical_assessments=pending_physical_assessments,
         )
 
     async def get_performance(

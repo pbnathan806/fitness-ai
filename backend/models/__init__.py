@@ -2,8 +2,8 @@ from models.application_setting import ApplicationSetting
 from models.check_in import CheckIn
 from models.client import Client
 from models.client_trainer_assignment import ClientTrainerAssignment
-from models.measurement import Measurement
 from models.password_reset_token import PasswordResetToken
+from models.physical_assessment import PhysicalAssessment
 from models.role import Role
 from models.session import (
     Session,
@@ -27,8 +27,8 @@ __all__ = [
     "CheckIn",
     "Client",
     "ClientTrainerAssignment",
-    "Measurement",
     "PasswordResetToken",
+    "PhysicalAssessment",
     "Role",
     "Session",
     "SessionAttendanceStatus",

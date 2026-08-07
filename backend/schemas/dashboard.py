@@ -9,7 +9,7 @@ class TrainerDashboardResponse(BaseModel):
     sessions_today: int
     upcoming_sessions_next_7_days: int
     pending_check_ins: int
-    pending_measurements: int
+    pending_physical_assessments: int
 
 
 class SuperAdminDashboardResponse(BaseModel):
@@ -20,16 +20,16 @@ class SuperAdminDashboardResponse(BaseModel):
     total_trainers: int
     sessions_today: int
     upcoming_sessions_next_7_days: int
-    measurements_recorded_this_month: int
+    physical_assessments_recorded_this_month: int
     pending_check_ins: int
     clients_missing_check_ins_today: int
-    pending_measurements: int
-    clients_missing_measurements: int
+    pending_physical_assessments: int
+    clients_missing_physical_assessments: int
 
 
 class ClientDashboardResponse(BaseModel):
     completed_check_ins: int
     expected_check_ins: int
     adherence_percentage: int
-    latest_measurement_date: date | None
-    next_measurement_due_date: date | None
+    latest_physical_assessment_date: date | None
+    next_physical_assessment_due_date: date | None

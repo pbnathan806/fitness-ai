@@ -20,8 +20,10 @@ interface SessionCheckInCardProps {
   /** Only id/scheduled_start/status are read, so this accepts both the full
    * Session (TRAINER/SUPER_ADMIN) and the narrower ClientSessionView (CLIENT). */
   session: Pick<Session, "id" | "scheduled_start" | "status">
-  /** Whether this role may submit a brand-new check-in for this session
-   * (CLIENT/TRAINER per spec). SUPER_ADMIN gets View/Edit only, no Submit. */
+  /** Whether this role may submit a brand-new check-in for this session.
+   * CLIENT, TRAINER, and SUPER_ADMIN may all submit, per the RBAC spec's
+   * "Client Check-ins" row (Yes for all three roles) and the backend, which
+   * permits SUPER_ADMIN unconditionally (`CheckInService._authorize`). */
   allowSubmit: boolean
   /** When provided, an extra "Submitted By" row is shown (SUPER_ADMIN's audit
    * view), resolving the check-in's submitted_by user id to a display label.

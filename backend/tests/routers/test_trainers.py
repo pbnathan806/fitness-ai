@@ -13,7 +13,7 @@ from routers.trainers import (
     get_assignment_repository,
     get_check_in_repository,
     get_dashboard_repository,
-    get_measurement_repository,
+    get_physical_assessment_repository,
     get_role_repository,
     get_session_repository,
     get_trainer_availability_repository,
@@ -29,7 +29,7 @@ from tests.services.test_assignment_service import FakeAssignmentRepository, _ma
 from tests.services.test_check_in_service import FakeCheckInRepository
 from tests.services.test_client_service import FakeUserRepository
 from tests.services.test_dashboard_service import FakeDashboardRepository
-from tests.services.test_measurement_service import FakeMeasurementRepository
+from tests.services.test_physical_assessment_service import FakePhysicalAssessmentRepository
 from tests.services.test_session_service import FakeSessionRepository
 from tests.services.test_trainer_service import (
     FakeRoleRepository,
@@ -51,7 +51,7 @@ def _make_seeded_trainer(user_id: uuid.UUID, **overrides):
 
 def _application_setting_service() -> ApplicationSettingService:
     repository = FakeApplicationSettingRepository()
-    repository.seed(_make_setting(key="measurement_overdue_days", value="14"))
+    repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
     return ApplicationSettingService(repository)
 
 
@@ -63,7 +63,7 @@ def _override_dependencies(
     assignment_repository=None,
     session_repository=None,
     check_in_repository=None,
-    measurement_repository=None,
+    physical_assessment_repository=None,
     trainer_availability_repository=None,
     dashboard_repository=None,
     application_setting_service=None,
@@ -88,8 +88,8 @@ def _override_dependencies(
     app.dependency_overrides[get_check_in_repository] = lambda: (
         check_in_repository or FakeCheckInRepository()
     )
-    app.dependency_overrides[get_measurement_repository] = lambda: (
-        measurement_repository or FakeMeasurementRepository()
+    app.dependency_overrides[get_physical_assessment_repository] = lambda: (
+        physical_assessment_repository or FakePhysicalAssessmentRepository()
     )
     app.dependency_overrides[get_trainer_availability_repository] = lambda: (
         trainer_availability_repository or FakeTrainerAvailabilityRepository()
@@ -437,7 +437,7 @@ def test_get_trainer_summary_returns_zero_metrics_for_new_trainer():
         "sessions_this_week": 0,
         "completed_sessions_this_month": 0,
         "pending_check_ins": 0,
-        "pending_measurements": 0,
+        "pending_physical_assessments": 0,
     }
 
 

@@ -48,7 +48,7 @@ export interface TrainerSummary {
   sessions_this_week: number
   completed_sessions_this_month: number
   pending_check_ins: number
-  pending_measurements: number
+  pending_physical_assessments: number
 }
 
 export interface TrainerPerformance {

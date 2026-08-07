@@ -111,7 +111,7 @@ export function SessionDetailsPage() {
 
       <SessionDetailsCard session={session} clientName={clientName} trainerName={trainerName} />
 
-      <SessionCheckInCard session={session} allowSubmit={false} resolveSubmittedBy={resolveSubmittedBy} />
+      <SessionCheckInCard session={session} allowSubmit resolveSubmittedBy={resolveSubmittedBy} />
 
       <Card>
         <CardHeader>

@@ -74,11 +74,11 @@ def classify_client_state(
     return "INACTIVE"
 
 
-def is_measurement_overdue(
-    latest_recorded_at: datetime | None, today: date, measurement_overdue_days: int
+def is_physical_assessment_overdue(
+    latest_recorded_at: datetime | None, today: date, physical_assessment_overdue_days: int
 ) -> bool:
-    """True if a client has no measurement, or their latest one is older than measurement_overdue_days."""
+    """True if a client has no physical assessment, or their latest one is older than physical_assessment_overdue_days."""
     if latest_recorded_at is None:
         return True
     latest_local_date = latest_recorded_at.astimezone(_ADMIN_TIMEZONE).date()
-    return (today - latest_local_date).days > measurement_overdue_days
+    return (today - latest_local_date).days > physical_assessment_overdue_days
