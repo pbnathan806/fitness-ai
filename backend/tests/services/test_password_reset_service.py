@@ -23,6 +23,11 @@ class FakeUserRepository(UserRepository):
         self._user = user
         self.password_hash_calls: list[tuple[uuid.UUID, str]] = []
 
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        if self._user is not None and self._user.id == user_id:
+            return self._user
+        return None
+
     async def get_by_email(self, email: str) -> User | None:
         if self._user is not None and self._user.email == email:
             return self._user

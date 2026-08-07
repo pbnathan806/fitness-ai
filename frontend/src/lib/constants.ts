@@ -20,6 +20,12 @@ export const ROLE_HOME_PATH: Record<RoleName, string> = {
   [Role.CLIENT]: "/client/dashboard",
 }
 
+export const ROLE_CHANGE_PASSWORD_PATH: Record<RoleName, string> = {
+  [Role.SUPER_ADMIN]: "/super-admin/change-password",
+  [Role.TRAINER]: "/trainer/change-password",
+  [Role.CLIENT]: "/client/change-password",
+}
+
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1"
 
 export const AUTH_STORAGE_KEY = "fitness_ai.auth"

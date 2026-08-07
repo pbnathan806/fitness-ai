@@ -4,17 +4,29 @@ from datetime import datetime, timezone
 
 import pytest
 
-from core.security import hash_password
+from core.security import hash_password, verify_password
 from models.user import User
 from repositories.role_repository import RoleRepository
 from repositories.user_repository import UserRepository
-from services.auth_service import AuthService, InvalidCredentialsError, RoleNotAssignedError
+from services.auth_service import (
+    AuthService,
+    IncorrectPasswordError,
+    InvalidCredentialsError,
+    RoleNotAssignedError,
+    UserNotFoundError,
+)
 
 
 class FakeUserRepository(UserRepository):
     def __init__(self, user: User | None) -> None:
         self._user = user
         self.last_login_calls: list[tuple[uuid.UUID, datetime]] = []
+        self.password_hash_calls: list[tuple[uuid.UUID, str]] = []
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        if self._user is not None and self._user.id == user_id:
+            return self._user
+        return None
 
     async def get_by_email(self, email: str) -> User | None:
         if self._user is not None and self._user.email == email:
@@ -25,7 +37,9 @@ class FakeUserRepository(UserRepository):
         self.last_login_calls.append((user_id, login_time))
 
     async def update_password_hash(self, user_id: uuid.UUID, password_hash: str) -> None:
-        raise NotImplementedError
+        self.password_hash_calls.append((user_id, password_hash))
+        if self._user is not None and self._user.id == user_id:
+            self._user.password_hash = password_hash
 
     async def create(self, email: str, password_hash: str) -> User:
         raise NotImplementedError
@@ -154,3 +168,38 @@ def test_switch_role_rejects_unassigned_role():
 
     with pytest.raises(RoleNotAssignedError):
         asyncio.run(service.switch_role(user.id, "SUPER_ADMIN"))
+
+
+def test_change_password_succeeds_with_correct_current_password():
+    user = _make_user("trainer@example.com", "Str0ngPassword!")
+    user_repository = FakeUserRepository(user)
+    role_repository = FakeRoleRepository(["TRAINER"])
+    service = AuthService(user_repository, role_repository)
+
+    asyncio.run(service.change_password(user.id, "Str0ngPassword!", "NewStr0ngPassword!"))
+
+    assert len(user_repository.password_hash_calls) == 1
+    assert verify_password("NewStr0ngPassword!", user.password_hash)
+
+
+def test_change_password_rejects_incorrect_current_password():
+    user = _make_user("trainer@example.com", "Str0ngPassword!")
+    user_repository = FakeUserRepository(user)
+    role_repository = FakeRoleRepository(["TRAINER"])
+    service = AuthService(user_repository, role_repository)
+
+    with pytest.raises(IncorrectPasswordError):
+        asyncio.run(service.change_password(user.id, "WrongPassword!", "NewStr0ngPassword!"))
+
+    assert user_repository.password_hash_calls == []
+
+
+def test_change_password_raises_for_unknown_user():
+    user_repository = FakeUserRepository(None)
+    role_repository = FakeRoleRepository([])
+    service = AuthService(user_repository, role_repository)
+
+    with pytest.raises(UserNotFoundError):
+        asyncio.run(
+            service.change_password(uuid.uuid4(), "Str0ngPassword!", "NewStr0ngPassword!")
+        )

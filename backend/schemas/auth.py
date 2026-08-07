@@ -35,6 +35,15 @@ class ResetPasswordResponse(BaseModel):
     message: str = "Password has been reset successfully."
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
+
+
+class ChangePasswordResponse(BaseModel):
+    message: str = "Password has been changed successfully."
+
+
 class RolesResponse(BaseModel):
     roles: list[str]
     active_role: str | None = None

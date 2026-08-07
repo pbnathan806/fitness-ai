@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout"
 import { LoginPage } from "@/app/pages/LoginPage"
 import { ForgotPasswordPage } from "@/app/pages/ForgotPasswordPage"
 import { ResetPasswordPage } from "@/app/pages/ResetPasswordPage"
+import { ChangePasswordPage } from "@/app/pages/ChangePasswordPage"
 import { SelectRolePage } from "@/app/pages/SelectRolePage"
 import { UnauthorizedPage } from "@/app/pages/UnauthorizedPage"
 import { NotFoundPage } from "@/app/pages/NotFoundPage"
@@ -36,6 +37,7 @@ import { SubscriptionCreatePage } from "@/app/pages/subscriptions/SubscriptionCr
 import { SubscriptionDetailsPage } from "@/app/pages/subscriptions/SubscriptionDetailsPage"
 import { ClientSubscriptionsPage } from "@/app/pages/client/ClientSubscriptionsPage"
 import { ClientMeasurementsPage } from "@/app/pages/client/ClientMeasurementsPage"
+import { ClientProfilePage } from "@/app/pages/client/ClientProfilePage"
 import { SessionsListPage } from "@/app/pages/sessions/SessionsListPage"
 import { SessionCreatePage } from "@/app/pages/sessions/SessionCreatePage"
 import { SessionBulkCreatePage } from "@/app/pages/sessions/SessionBulkCreatePage"
@@ -142,6 +144,9 @@ const SECTION_OVERRIDES: Partial<Record<RoleName, Record<string, Pick<RouteObjec
     },
   },
   [Role.CLIENT]: {
+    Profile: {
+      children: [{ index: true, element: <ClientProfilePage /> }],
+    },
     Subscriptions: {
       children: [{ index: true, element: <ClientSubscriptionsPage /> }],
     },
@@ -203,6 +208,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="dashboard" replace /> },
               ...roleSectionChildren(Role.SUPER_ADMIN, <SuperAdminDashboardPage />),
+              { path: "change-password", element: <ChangePasswordPage /> },
             ],
           },
         ],
@@ -222,6 +228,7 @@ export const router = createBrowserRouter([
               // /trainer/clients index route above (SECTION_OVERRIDES
               // "Assigned Clients") is separate.
               { path: "clients/:id", element: <TrainerClientMeasurementsPage /> },
+              { path: "change-password", element: <ChangePasswordPage /> },
             ],
           },
         ],
@@ -235,6 +242,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="dashboard" replace /> },
               ...roleSectionChildren(Role.CLIENT, <ClientDashboardPage />),
+              { path: "change-password", element: <ChangePasswordPage /> },
             ],
           },
         ],

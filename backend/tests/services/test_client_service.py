@@ -27,6 +27,12 @@ class FakeUserRepository(UserRepository):
         self._users: list[User] = list(users) if users else []
         self.created: list[User] = []
 
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        for user in self._users:
+            if user.id == user_id:
+                return user
+        return None
+
     async def get_by_email(self, email: str) -> User | None:
         for user in self._users:
             if user.email == email:

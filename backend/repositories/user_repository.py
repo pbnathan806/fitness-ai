@@ -13,6 +13,9 @@ class UserRepository(ABC):
     """Abstraction over user persistence, decoupling callers from SQLAlchemy."""
 
     @abstractmethod
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None: ...
+
+    @abstractmethod
     async def get_by_email(self, email: str) -> User | None: ...
 
     @abstractmethod
@@ -28,6 +31,10 @@ class UserRepository(ABC):
 class SQLAlchemyUserRepository(UserRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        result = await self._session.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self._session.execute(select(User).where(User.email == email))

@@ -1,5 +1,6 @@
 import { apiClient } from "@/services/apiClient"
 import type {
+  ChangePasswordResponse,
   ForgotPasswordResponse,
   LoginRequest,
   LoginResponse,
@@ -30,6 +31,17 @@ export const authService = {
   async resetPassword(token: string, newPassword: string): Promise<ResetPasswordResponse> {
     const { data } = await apiClient.post<ResetPasswordResponse>("/auth/reset-password", {
       token,
+      new_password: newPassword,
+    })
+    return data
+  },
+
+  async changePassword(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<ChangePasswordResponse> {
+    const { data } = await apiClient.post<ChangePasswordResponse>("/auth/change-password", {
+      current_password: currentPassword,
       new_password: newPassword,
     })
     return data

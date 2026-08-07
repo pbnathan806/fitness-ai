@@ -11,6 +11,8 @@ from repositories.password_reset_token_repository import (
 from repositories.role_repository import RoleRepository, SQLAlchemyRoleRepository
 from repositories.user_repository import SQLAlchemyUserRepository, UserRepository
 from schemas.auth import (
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LoginRequest,
@@ -21,7 +23,13 @@ from schemas.auth import (
     SwitchRoleRequest,
     SwitchRoleResponse,
 )
-from services.auth_service import AuthService, InvalidCredentialsError, RoleNotAssignedError
+from services.auth_service import (
+    AuthService,
+    IncorrectPasswordError,
+    InvalidCredentialsError,
+    RoleNotAssignedError,
+    UserNotFoundError,
+)
 from services.password_reset_service import (
     ConsolePasswordResetNotifier,
     InvalidResetTokenError,
@@ -158,3 +166,29 @@ async def switch_role(
         active_role=selection.active_role,
         roles=selection.roles,
     )
+
+
+@router.post(
+    "/change-password",
+    response_model=ChangePasswordResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> ChangePasswordResponse:
+    try:
+        await auth_service.change_password(
+            current_user.user_id, payload.current_password, payload.new_password
+        )
+    except IncorrectPasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+
+    return ChangePasswordResponse()

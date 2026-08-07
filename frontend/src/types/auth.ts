@@ -22,6 +22,15 @@ export interface ResetPasswordResponse {
   message: string
 }
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+export interface ChangePasswordResponse {
+  message: string
+}
+
 export interface LoginResponse {
   access_token: string
   token_type: string

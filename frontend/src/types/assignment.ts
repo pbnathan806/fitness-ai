@@ -24,3 +24,15 @@ export interface AssignedClient {
   timezone: string
   is_primary: boolean
 }
+
+export interface AssignedTrainer {
+  assignment_id: string
+  trainer_id: string
+  specialization: string | null
+  experience_years: number | null
+  bio: string | null
+  timezone: string | null
+  country: string | null
+  email: string
+  is_primary: boolean
+}

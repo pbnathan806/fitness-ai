@@ -158,3 +158,74 @@ def test_switch_role_endpoint_requires_authentication():
     response = client.post("/api/v1/auth/switch-role", json={"role": "TRAINER"})
 
     assert response.status_code == 401
+
+
+def test_change_password_endpoint_succeeds_with_correct_current_password():
+    user = User(
+        id=uuid.uuid4(),
+        email="trainer@example.com",
+        password_hash=hash_password("Str0ngPassword!"),
+    )
+    token = create_access_token(subject=str(user.id))
+    app.dependency_overrides[get_user_repository] = lambda: FakeUserRepository(user)
+    app.dependency_overrides[get_role_repository] = lambda: FakeRoleRepository(["TRAINER"])
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "Str0ngPassword!", "new_password": "NewStr0ngPassword!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_change_password_endpoint_rejects_incorrect_current_password():
+    user = User(
+        id=uuid.uuid4(),
+        email="trainer@example.com",
+        password_hash=hash_password("Str0ngPassword!"),
+    )
+    token = create_access_token(subject=str(user.id))
+    app.dependency_overrides[get_user_repository] = lambda: FakeUserRepository(user)
+    app.dependency_overrides[get_role_repository] = lambda: FakeRoleRepository(["TRAINER"])
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "WrongPassword!", "new_password": "NewStr0ngPassword!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_change_password_endpoint_rejects_short_new_password():
+    user = User(
+        id=uuid.uuid4(),
+        email="trainer@example.com",
+        password_hash=hash_password("Str0ngPassword!"),
+    )
+    token = create_access_token(subject=str(user.id))
+    app.dependency_overrides[get_user_repository] = lambda: FakeUserRepository(user)
+    app.dependency_overrides[get_role_repository] = lambda: FakeRoleRepository(["TRAINER"])
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "Str0ngPassword!", "new_password": "short"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_change_password_endpoint_requires_authentication():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "Str0ngPassword!", "new_password": "NewStr0ngPassword!"},
+    )
+
+    assert response.status_code == 401

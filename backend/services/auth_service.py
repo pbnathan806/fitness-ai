@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from core.config import settings
-from core.security import create_access_token, verify_password
+from core.security import create_access_token, hash_password, verify_password
 from repositories.role_repository import RoleRepository
 from repositories.user_repository import UserRepository
 
@@ -14,6 +14,14 @@ class InvalidCredentialsError(Exception):
 
 class RoleNotAssignedError(Exception):
     """Raised when a user attempts to select a role that is not assigned to them."""
+
+
+class UserNotFoundError(Exception):
+    """Raised when the authenticated JWT subject no longer resolves to a user."""
+
+
+class IncorrectPasswordError(Exception):
+    """Raised when a change-password request's current_password does not match."""
 
 
 @dataclass(frozen=True)
@@ -73,3 +81,15 @@ class AuthService:
             active_role=role,
             roles=roles,
         )
+
+    async def change_password(
+        self, user_id: uuid.UUID, current_password: str, new_password: str
+    ) -> None:
+        user = await self._user_repository.get_by_id(user_id)
+        if user is None:
+            raise UserNotFoundError("User not found.")
+        if not verify_password(current_password, user.password_hash):
+            raise IncorrectPasswordError("Current password is incorrect.")
+
+        new_hash = hash_password(new_password)
+        await self._user_repository.update_password_hash(user.id, new_hash)

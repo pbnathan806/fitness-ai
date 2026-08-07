@@ -45,6 +45,11 @@ export const clientService = {
     return data
   },
 
+  async updateMe(payload: ClientUpdateInput): Promise<Client> {
+    const { data } = await apiClient.put<Client>("/clients/me", payload)
+    return data
+  },
+
   async createClient(payload: ClientCreateInput): Promise<Client> {
     const { data } = await apiClient.post<Client>("/clients", payload)
     return data

@@ -1,4 +1,4 @@
-import { Menu, LogOut, ChevronDown } from "lucide-react"
+import { Menu, LogOut, ChevronDown, KeyRound } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/hooks/useAuth"
-import { ROLE_HOME_PATH, ROLE_LABELS, type RoleName } from "@/lib/constants"
+import { ROLE_CHANGE_PASSWORD_PATH, ROLE_HOME_PATH, ROLE_LABELS, type RoleName } from "@/lib/constants"
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -23,7 +23,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
   if (!session?.activeRole) return null
 
-  const otherRoles = session.roles.filter((role) => role !== session.activeRole)
+  const activeRole = session.activeRole
+  const otherRoles = session.roles.filter((role) => role !== activeRole)
 
   const handleSwitchRole = (role: RoleName) => {
     selectRole(role).then(() => navigate(ROLE_HOME_PATH[role]))
@@ -68,6 +69,10 @@ export function Header({ onMenuClick }: HeaderProps) {
           )}
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => navigate(ROLE_CHANGE_PASSWORD_PATH[activeRole])}>
+              <KeyRound className="size-4" />
+              Change Password
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={logout} variant="destructive">
               <LogOut className="size-4" />
               Log out
