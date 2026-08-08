@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/common/ErrorState"
 import { SessionCheckInCard } from "@/app/pages/sessions/components/SessionCheckInCard"
 import { sessionService } from "@/services/sessionService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import { SESSION_STATUS_BADGE_VARIANT, SESSION_STATUS_LABELS } from "@/lib/sessionStatus"
 import { SESSION_MEETING_TYPE_LABELS } from "@/lib/sessionMeetingType"
@@ -25,6 +26,7 @@ import {
  * here: `GET /trainers/{id}` is not permitted for the CLIENT role, and Task
  * 22.6 scopes this screen to session APIs only. */
 export function ClientMySessionDetailsPage() {
+  const timezone = useDisplayTimezone()
   const { id } = useParams<{ id: string }>()
 
   const sessionQuery = useQuery({
@@ -57,8 +59,11 @@ export function ClientMySessionDetailsPage() {
       </Button>
 
       <div>
-        <h1 className="text-xl font-semibold">{formatDateTime(session.scheduled_start)}</h1>
-        <p className="text-sm text-muted-foreground">Session details</p>
+        <h1 className="text-xl font-semibold">{formatDateTime(session.scheduled_start, timezone)}</h1>
+        <p className="text-sm text-muted-foreground">
+          Session details
+          {timezone && ` - times shown in your profile timezone (${timezone})`}
+        </p>
       </div>
 
       <Card>
@@ -68,7 +73,7 @@ export function ClientMySessionDetailsPage() {
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">Scheduled Start</p>
-            <p className="text-sm font-medium">{formatDateTime(session.scheduled_start)}</p>
+            <p className="text-sm font-medium">{formatDateTime(session.scheduled_start, timezone)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Duration</p>

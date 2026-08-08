@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import { checkInService } from "@/services/checkInService"
 import { useAuth } from "@/hooks/useAuth"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 
 function checkInSummary(mood: number | null, energyLevel: number | null): string {
@@ -27,6 +28,7 @@ function checkInSummary(mood: number | null, energyLevel: number | null): string
  * project_checkins_v2_rbac_and_ui memory: clients get no pending queue). */
 export function ClientCheckInsPage() {
   const { session } = useAuth()
+  const timezone = useDisplayTimezone()
 
   const checkInsQuery = useQuery({
     queryKey: ["check-ins", "all"],
@@ -46,6 +48,7 @@ export function ClientCheckInsPage() {
         <p className="text-sm text-muted-foreground">
           Your check-in history. Your trainer usually logs these during a session, but you can add or edit one from
           any session's details page.
+          {timezone && ` Times shown in your profile timezone (${timezone}).`}
         </p>
       </div>
 
@@ -94,7 +97,7 @@ export function ClientCheckInsPage() {
                   {sortedCheckIns.map((checkIn) => (
                     <tr key={checkIn.id} className="hover:bg-muted/30">
                       <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                        {formatDateTime(checkIn.submitted_at)}
+                        {formatDateTime(checkIn.submitted_at, timezone)}
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">
                         {checkInSummary(checkIn.mood, checkIn.energy_level)}

@@ -11,6 +11,7 @@ import { SessionFilters } from "@/app/pages/sessions/components/SessionFilters"
 import { toLocalDateValue } from "@/app/pages/sessions/components/dateTimeLocal"
 import { sessionService } from "@/services/sessionService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import { SESSION_STATUS_BADGE_VARIANT, SESSION_STATUS_LABELS } from "@/lib/sessionStatus"
 import { SESSION_MEETING_TYPE_LABELS } from "@/lib/sessionMeetingType"
@@ -27,6 +28,7 @@ const PAGE_SIZE = 10
  * already narrows the response to ClientSessionView) - trainer_notes,
  * trainer_feedback, and next_session_focus never reach this component. */
 export function ClientMySessionsListPage() {
+  const timezone = useDisplayTimezone()
   const [statusFilter, setStatusFilter] = useState<SessionStatus | "ALL">("ALL")
   const [meetingTypeFilter, setMeetingTypeFilter] = useState<SessionMeetingType | "ALL">("ALL")
   const [dateFilter, setDateFilter] = useState("")
@@ -49,7 +51,10 @@ export function ClientMySessionsListPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold">My Sessions</h1>
-        <p className="text-sm text-muted-foreground">View your scheduled and past coaching sessions.</p>
+        <p className="text-sm text-muted-foreground">
+          View your scheduled and past coaching sessions.
+          {timezone && ` Times shown in your profile timezone (${timezone}).`}
+        </p>
       </div>
 
       <SessionFilters
@@ -107,7 +112,7 @@ export function ClientMySessionsListPage() {
                   <tr key={session.id} className="hover:bg-muted/30">
                     <td className="px-3 py-2.5 whitespace-nowrap font-medium">
                       <Link to={`/client/my-sessions/${session.id}`} className="hover:underline">
-                        {formatDateTime(session.scheduled_start)}
+                        {formatDateTime(session.scheduled_start, timezone)}
                       </Link>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">

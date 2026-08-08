@@ -31,6 +31,7 @@ import { TrainerClientsPage } from "@/app/pages/trainer/TrainerClientsPage"
 import { TrainerSessionNotesPage } from "@/app/pages/trainer/TrainerSessionNotesPage"
 import { TrainerCheckInsPage } from "@/app/pages/trainer/TrainerCheckInsPage"
 import { TrainerTimezoneLayout } from "@/app/pages/trainer/TrainerTimezoneLayout"
+import { ClientTimezoneLayout } from "@/app/pages/client/ClientTimezoneLayout"
 import { SubscriptionPlansListPage } from "@/app/pages/subscriptionPlans/SubscriptionPlansListPage"
 import { SubscriptionPlanCreatePage } from "@/app/pages/subscriptionPlans/SubscriptionPlanCreatePage"
 import { SubscriptionPlanEditPage } from "@/app/pages/subscriptionPlans/SubscriptionPlanEditPage"
@@ -249,11 +250,16 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute allowedRoles={[Role.CLIENT]} />,
         children: [
           {
-            element: <AppLayout />,
+            element: <ClientTimezoneLayout />,
             children: [
-              { index: true, element: <Navigate to="dashboard" replace /> },
-              ...roleSectionChildren(Role.CLIENT, <ClientDashboardPage />),
-              { path: "change-password", element: <ChangePasswordPage /> },
+              {
+                element: <AppLayout />,
+                children: [
+                  { index: true, element: <Navigate to="dashboard" replace /> },
+                  ...roleSectionChildren(Role.CLIENT, <ClientDashboardPage />),
+                  { path: "change-password", element: <ChangePasswordPage /> },
+                ],
+              },
             ],
           },
         ],

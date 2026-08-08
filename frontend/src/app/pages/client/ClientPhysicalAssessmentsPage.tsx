@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import { clientService } from "@/services/clientService"
 import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDate } from "@/lib/format"
 import type { LatestPhysicalAssessment } from "@/types/physicalAssessment"
 
@@ -82,6 +83,7 @@ function formatMetric(current: number | null, previous: number | null, change: n
  * assessment. Clients cannot add or edit physical assessments - only
  * Trainers/Super Admins can (see backend PhysicalAssessmentService RBAC). */
 export function ClientPhysicalAssessmentsPage() {
+  const timezone = useDisplayTimezone()
   const clientQuery = useQuery({
     queryKey: ["clients", "me"],
     queryFn: clientService.getMe,
@@ -99,7 +101,10 @@ export function ClientPhysicalAssessmentsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold">My Physical Assessments</h1>
-        <p className="text-sm text-muted-foreground">Your latest physical assessment compared with the one before it.</p>
+        <p className="text-sm text-muted-foreground">
+          Your latest physical assessment compared with the one before it.
+          {timezone && ` Dates use your profile timezone (${timezone}).`}
+        </p>
       </div>
 
       <Card>
