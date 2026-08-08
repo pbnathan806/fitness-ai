@@ -6,7 +6,7 @@ import type {
   PhysicalAssessmentCreateInput,
   PhysicalAssessmentUpdateInput,
   PaginatedPhysicalAssessments,
-  PendingPhysicalAssessment,
+  PendingPhysicalAssessmentsResponse,
 } from "@/types/physicalAssessment"
 
 // `GET /physical-assessments` has no filter params, so (as in sessionService and
@@ -73,12 +73,14 @@ export const physicalAssessmentService = {
     return data
   },
 
-  /** TRAINER/SUPER_ADMIN only - CLIENT gets 403. Only includes clients who
-   * have at least one prior physical assessment but are now overdue;
-   * clients never assessed at all are a separate "missing" bucket (see the
-   * Super Admin dashboard), not included here. */
-  async listPending(): Promise<PendingPhysicalAssessment[]> {
-    const { data } = await apiClient.get<PendingPhysicalAssessment[]>("/physical-assessments/pending")
+  /** TRAINER/SUPER_ADMIN only - CLIENT gets 403. `items` only includes
+   * clients who have at least one prior physical assessment but are now
+   * overdue; clients never assessed at all are a separate "missing" bucket
+   * (see the Super Admin dashboard / Trainer's Never Assessed tab), not
+   * included here. `overdue_threshold_days` is the application-configured
+   * threshold this list was computed against. */
+  async listPending(): Promise<PendingPhysicalAssessmentsResponse> {
+    const { data } = await apiClient.get<PendingPhysicalAssessmentsResponse>("/physical-assessments/pending")
     return data
   },
 }

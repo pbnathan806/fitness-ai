@@ -119,6 +119,16 @@ class PendingPhysicalAssessmentDetail:
     days_overdue: int
 
 
+@dataclass(frozen=True)
+class PendingPhysicalAssessments:
+    """Wraps the pending list with the overdue threshold it was computed
+    against, since TRAINER has no other way to read this application
+    setting (GET /application-settings is SUPER_ADMIN-only)."""
+
+    items: list[PendingPhysicalAssessmentDetail]
+    overdue_threshold_days: int
+
+
 def _to_detail(physical_assessment: PhysicalAssessment) -> PhysicalAssessmentDetail:
     return PhysicalAssessmentDetail(
         id=physical_assessment.id,
@@ -420,7 +430,7 @@ class PhysicalAssessmentService:
 
     async def list_pending_physical_assessments(
         self, actor_role: str | None, actor_id: uuid.UUID
-    ) -> list[PendingPhysicalAssessmentDetail]:
+    ) -> PendingPhysicalAssessments:
         if actor_role == RoleName.SUPER_ADMIN:
             client_ids = None
         elif actor_role == RoleName.TRAINER:
@@ -454,4 +464,6 @@ class PhysicalAssessmentService:
                     days_overdue=(today - due_date).days,
                 )
             )
-        return pending
+        return PendingPhysicalAssessments(
+            items=pending, overdue_threshold_days=physical_assessment_overdue_days
+        )

@@ -22,6 +22,7 @@ from schemas.physical_assessment import (
     LatestPhysicalAssessmentResponse,
     PaginatedPhysicalAssessmentsResponse,
     PendingPhysicalAssessmentResponse,
+    PendingPhysicalAssessmentsResponse,
     PhysicalAssessmentCreateRequest,
     PhysicalAssessmentResponse,
     PhysicalAssessmentUpdateRequest,
@@ -31,6 +32,7 @@ from services.physical_assessment_service import (
     ClientNotFoundError,
     ForbiddenError,
     PendingPhysicalAssessmentDetail,
+    PendingPhysicalAssessments,
     PhysicalAssessmentDetail,
     PhysicalAssessmentEditWindowExpiredError,
     PhysicalAssessmentFieldsRequiredError,
@@ -122,6 +124,15 @@ def _to_pending_response(detail: PendingPhysicalAssessmentDetail) -> PendingPhys
     )
 
 
+def _to_pending_list_response(
+    result: PendingPhysicalAssessments,
+) -> PendingPhysicalAssessmentsResponse:
+    return PendingPhysicalAssessmentsResponse(
+        items=[_to_pending_response(item) for item in result.items],
+        overdue_threshold_days=result.overdue_threshold_days,
+    )
+
+
 @router.post("", response_model=PhysicalAssessmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_physical_assessment(
     payload: PhysicalAssessmentCreateRequest,
@@ -189,14 +200,14 @@ async def list_physical_assessments(
 
 
 @router.get(
-    "/pending", response_model=list[PendingPhysicalAssessmentResponse], status_code=status.HTTP_200_OK
+    "/pending", response_model=PendingPhysicalAssessmentsResponse, status_code=status.HTTP_200_OK
 )
 async def list_pending_physical_assessments(
     current_user: CurrentUser = Depends(get_current_user),
     physical_assessment_service: PhysicalAssessmentService = Depends(get_physical_assessment_service),
-) -> list[PendingPhysicalAssessmentResponse]:
+) -> PendingPhysicalAssessmentsResponse:
     try:
-        items = await physical_assessment_service.list_pending_physical_assessments(
+        result = await physical_assessment_service.list_pending_physical_assessments(
             actor_role=current_user.active_role,
             actor_id=current_user.user_id,
         )
@@ -205,7 +216,7 @@ async def list_pending_physical_assessments(
     except TrainerNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    return [_to_pending_response(item) for item in items]
+    return _to_pending_list_response(result)
 
 
 @router.get(

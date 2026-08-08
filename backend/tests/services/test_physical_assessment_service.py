@@ -750,9 +750,10 @@ def test_list_pending_physical_assessments_returns_all_for_super_admin():
         service.list_pending_physical_assessments(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
     )
 
-    assert len(result) == 1
-    assert result[0].client_id == client.id
-    assert result[0].days_overdue == 6
+    assert len(result.items) == 1
+    assert result.items[0].client_id == client.id
+    assert result.items[0].days_overdue == 6
+    assert result.overdue_threshold_days == 14
 
 
 def test_list_pending_physical_assessments_scoped_to_assigned_clients_for_trainer():
@@ -778,8 +779,8 @@ def test_list_pending_physical_assessments_scoped_to_assigned_clients_for_traine
         service.list_pending_physical_assessments(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
     )
 
-    assert len(result) == 1
-    assert result[0].client_id == client.id
+    assert len(result.items) == 1
+    assert result.items[0].client_id == client.id
 
 
 def test_list_pending_physical_assessments_excludes_clients_within_window():
@@ -799,7 +800,8 @@ def test_list_pending_physical_assessments_excludes_clients_within_window():
         service.list_pending_physical_assessments(actor_role=RoleName.SUPER_ADMIN, actor_id=uuid.uuid4())
     )
 
-    assert result == []
+    assert result.items == []
+    assert result.overdue_threshold_days == 14
 
 
 def test_list_pending_physical_assessments_rejects_client_role():

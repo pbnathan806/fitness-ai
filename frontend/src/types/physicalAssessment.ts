@@ -95,3 +95,11 @@ export interface PendingPhysicalAssessment {
   last_physical_assessment_date: string
   days_overdue: number
 }
+
+export interface PendingPhysicalAssessmentsResponse {
+  items: PendingPhysicalAssessment[]
+  /** The application-configured overdue threshold this list was computed
+   * against - exposed here since TRAINER has no other way to read it
+   * (GET /application-settings is SUPER_ADMIN-only). */
+  overdue_threshold_days: number
+}

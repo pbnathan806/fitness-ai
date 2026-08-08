@@ -579,9 +579,10 @@ def test_pending_physical_assessments_allowed_for_trainer():
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["client_id"] == str(client.id)
-    assert body[0]["days_overdue"] == 6
+    assert len(body["items"]) == 1
+    assert body["items"][0]["client_id"] == str(client.id)
+    assert body["items"][0]["days_overdue"] == 6
+    assert body["overdue_threshold_days"] == 14
 
 
 def test_pending_physical_assessments_returns_empty_list_when_none_pending():
@@ -598,7 +599,9 @@ def test_pending_physical_assessments_returns_empty_list_when_none_pending():
     response = test_client.get("/api/v1/physical-assessments/pending")
 
     assert response.status_code == 200
-    assert response.json() == []
+    body = response.json()
+    assert body["items"] == []
+    assert body["overdue_threshold_days"] == 14
 
 
 def test_pending_physical_assessments_rejects_client_role():

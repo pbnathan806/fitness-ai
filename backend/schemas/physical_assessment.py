@@ -113,3 +113,8 @@ class PendingPhysicalAssessmentResponse(BaseModel):
     client_name: str
     last_physical_assessment_date: date
     days_overdue: int
+
+
+class PendingPhysicalAssessmentsResponse(BaseModel):
+    items: list[PendingPhysicalAssessmentResponse]
+    overdue_threshold_days: int
