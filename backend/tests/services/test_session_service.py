@@ -149,6 +149,25 @@ class FakeSessionRepository(SessionRepository):
             and (not exclude_cancelled or s.status != SessionStatus.CANCELLED)
         )
 
+    async def list_in_range(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        exclude_cancelled: bool = False,
+    ) -> list[Session]:
+        matched = [
+            s
+            for s in self._sessions.values()
+            if start <= s.scheduled_start < end
+            and (trainer_id is None or s.trainer_id == trainer_id)
+            and (client_id is None or s.client_id == client_id)
+            and (not exclude_cancelled or s.status != SessionStatus.CANCELLED)
+        ]
+        return sorted(matched, key=lambda s: s.scheduled_start)
+
     async def count_completed(
         self,
         *,

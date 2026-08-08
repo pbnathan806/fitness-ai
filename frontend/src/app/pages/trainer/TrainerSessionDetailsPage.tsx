@@ -15,6 +15,7 @@ import { assignmentService } from "@/services/assignmentService"
 import { trainerService } from "@/services/trainerService"
 import { sessionService } from "@/services/sessionService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import type { SessionAttendanceStatus, SessionNotesUpdateInput, SessionUpdateInput } from "@/types/session"
 
 /** Trainer's own session details (Task 22.6). Unlike the SUPER_ADMIN screens,
@@ -22,6 +23,7 @@ import type { SessionAttendanceStatus, SessionNotesUpdateInput, SessionUpdateInp
  * 22.6 route table, so the scheduled_start/meeting_type/meeting_link/status
  * edit form is rendered inline here instead of on its own page. */
 export function TrainerSessionDetailsPage() {
+  const timezone = useDisplayTimezone()
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
 
@@ -109,7 +111,10 @@ export function TrainerSessionDetailsPage() {
 
       <div>
         <h1 className="text-xl font-semibold">{clientsQuery.isLoading ? "Loading..." : clientName}</h1>
-        <p className="text-sm text-muted-foreground">Session details</p>
+        <p className="text-sm text-muted-foreground">
+          Session details
+          {timezone && ` - times shown in your profile timezone (${timezone})`}
+        </p>
       </div>
 
       <SessionDetailsCard session={session} clientName={clientName} trainerName={trainerName} />

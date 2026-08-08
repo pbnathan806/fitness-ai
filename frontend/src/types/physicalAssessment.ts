@@ -102,4 +102,7 @@ export interface PendingPhysicalAssessmentsResponse {
    * against - exposed here since TRAINER has no other way to read it
    * (GET /application-settings is SUPER_ADMIN-only). */
   overdue_threshold_days: number
+  /** Timezone this list's dates were bucketed in - the caller's own profile
+   * timezone for a TRAINER, "Asia/Kolkata" for a SUPER_ADMIN. */
+  timezone: string
 }

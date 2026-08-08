@@ -184,10 +184,15 @@ class FakeTrainerAvailabilityRepository(TrainerAvailabilityRepository):
         return None
 
 
-def _application_setting_service(physical_assessment_overdue_days: int = 14) -> ApplicationSettingService:
+def _application_setting_service(
+    physical_assessment_overdue_days: int = 14, session_notes_gap_days: int = 2
+) -> ApplicationSettingService:
     repository = FakeApplicationSettingRepository()
     repository.seed(
         _make_setting(key="physical_assessment_overdue_days", value=str(physical_assessment_overdue_days))
+    )
+    repository.seed(
+        _make_setting(key="session_notes_gap_days", value=str(session_notes_gap_days))
     )
     return ApplicationSettingService(repository)
 
@@ -651,6 +656,226 @@ def test_update_self_only_allows_phone_and_timezone():
 
     assert updated.phone_number == "+15551112222"
     assert updated.timezone == "Asia/Kolkata"
+
+
+# ---------------------------------------------------------------------------
+# Agenda
+# ---------------------------------------------------------------------------
+
+
+def test_get_agenda_rejects_non_trainer():
+    service, *_ = _make_service()
+
+    for role in (RoleName.SUPER_ADMIN, RoleName.CLIENT, None):
+        with pytest.raises(ForbiddenError):
+            asyncio.run(service.get_agenda(actor_role=role, actor_id=uuid.uuid4()))
+
+
+def test_get_agenda_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(TrainerNotFoundError):
+        asyncio.run(service.get_agenda(actor_role=RoleName.TRAINER, actor_id=uuid.uuid4()))
+
+
+def test_get_agenda_labels_sessions_today_and_tomorrow_in_trainer_timezone():
+    (
+        service,
+        trainer_repository,
+        _,
+        _role_repository,
+        _assignment_repository,
+        session_repository,
+        *_rest,
+    ) = _make_service()
+    from models.session import SessionStatus
+
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id, timezone="UTC")
+    trainer_repository.seed(trainer)
+
+    today = datetime.now(timezone.utc).date()
+    tomorrow = today + timedelta(days=1)
+    day_after = today + timedelta(days=2)
+    client_id = uuid.uuid4()
+
+    today_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=datetime.combine(today, time(10, 0), tzinfo=timezone.utc),
+    )
+    tomorrow_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=datetime.combine(tomorrow, time(10, 0), tzinfo=timezone.utc),
+    )
+    out_of_range_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=datetime.combine(day_after, time(10, 0), tzinfo=timezone.utc),
+    )
+    cancelled_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=datetime.combine(today, time(11, 0), tzinfo=timezone.utc),
+        status=SessionStatus.CANCELLED,
+    )
+    for session in (today_session, tomorrow_session, out_of_range_session, cancelled_session):
+        session_repository.seed(session)
+
+    agenda = asyncio.run(
+        service.get_agenda(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert agenda.timezone == "UTC"
+    assert {s.id for s in agenda.sessions} == {today_session.id, tomorrow_session.id}
+    labels = {s.id: s.day for s in agenda.sessions}
+    assert labels[today_session.id] == "today"
+    assert labels[tomorrow_session.id] == "tomorrow"
+
+
+def test_get_agenda_defaults_to_admin_timezone_when_unset():
+    service, trainer_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id, timezone=None)
+    trainer_repository.seed(trainer)
+
+    agenda = asyncio.run(
+        service.get_agenda(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert agenda.timezone == "Asia/Kolkata"
+
+
+# ---------------------------------------------------------------------------
+# Session notes gap
+# ---------------------------------------------------------------------------
+
+
+def test_get_session_notes_gap_rejects_non_trainer():
+    service, *_ = _make_service()
+
+    for role in (RoleName.SUPER_ADMIN, RoleName.CLIENT, None):
+        with pytest.raises(ForbiddenError):
+            asyncio.run(service.get_session_notes_gap(actor_role=role, actor_id=uuid.uuid4()))
+
+
+def test_get_session_notes_gap_raises_not_found():
+    service, *_ = _make_service()
+
+    with pytest.raises(TrainerNotFoundError):
+        asyncio.run(
+            service.get_session_notes_gap(actor_role=RoleName.TRAINER, actor_id=uuid.uuid4())
+        )
+
+
+def test_get_session_notes_gap_returns_only_past_missing_notes_within_window():
+    (
+        service,
+        trainer_repository,
+        _,
+        _role_repository,
+        _assignment_repository,
+        session_repository,
+        *_rest,
+    ) = _make_service()
+
+    from models.session import SessionStatus
+
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    trainer_repository.seed(trainer)
+
+    now = datetime.now(timezone.utc)
+    client_id = uuid.uuid4()
+
+    missing_notes_recent = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=now - timedelta(hours=1),
+        trainer_notes=None,
+    )
+    has_notes_recent = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=now - timedelta(hours=2),
+        trainer_notes="Great session, hit all targets.",
+    )
+    future_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=now + timedelta(hours=1),
+        trainer_notes=None,
+    )
+    too_old_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=now - timedelta(days=5),
+        trainer_notes=None,
+    )
+    cancelled_session = _make_session(
+        client_id=client_id,
+        trainer_id=trainer.id,
+        scheduled_start=now - timedelta(hours=1),
+        trainer_notes=None,
+        status=SessionStatus.CANCELLED,
+    )
+    for session in (
+        missing_notes_recent,
+        has_notes_recent,
+        future_session,
+        too_old_session,
+        cancelled_session,
+    ):
+        session_repository.seed(session)
+
+    gap = asyncio.run(
+        service.get_session_notes_gap(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert gap.gap_days == 2
+    assert gap.timezone == "America/New_York"
+    assert {s.id for s in gap.sessions} == {missing_notes_recent.id}
+
+
+def test_get_session_notes_gap_defaults_to_admin_timezone_when_unset():
+    service, trainer_repository, *_ = _make_service()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id, timezone=None)
+    trainer_repository.seed(trainer)
+
+    gap = asyncio.run(
+        service.get_session_notes_gap(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert gap.timezone == "Asia/Kolkata"
+
+
+def test_get_session_notes_gap_uses_configured_gap_days():
+    trainer_repository = FakeTrainerRepository()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_trainer(user_id=trainer_user_id)
+    trainer_repository.seed(trainer)
+    application_setting_service = _application_setting_service(session_notes_gap_days=5)
+
+    service = TrainerService(
+        trainer_repository,
+        FakeUserRepository(),
+        FakeRoleRepository(),
+        FakeAssignmentRepository(),
+        FakeSessionRepository(),
+        FakeCheckInRepository(),
+        FakePhysicalAssessmentRepository(),
+        FakeTrainerAvailabilityRepository(),
+        FakeDashboardRepository(),
+        application_setting_service,
+    )
+
+    gap = asyncio.run(
+        service.get_session_notes_gap(actor_role=RoleName.TRAINER, actor_id=trainer_user_id)
+    )
+
+    assert gap.gap_days == 5
 
 
 # ---------------------------------------------------------------------------

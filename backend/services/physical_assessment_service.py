@@ -8,13 +8,13 @@ from models.physical_assessment import PhysicalAssessment
 from repositories.assignment_repository import AssignmentRepository
 from repositories.client_repository import ClientRepository
 from repositories.physical_assessment_repository import PhysicalAssessmentRepository
+from repositories.trainer_repository import TrainerRepository
 from services.application_setting_service import ApplicationSettingService
-from utils.dashboard import is_physical_assessment_overdue
+from utils.dashboard import client_local_today, is_physical_assessment_overdue
 from utils.physical_assessment import (
     at_least_one_physical_assessment_required,
     PHYSICAL_ASSESSMENT_FIELDS,
 )
-from utils.subscription import current_india_date
 
 
 class ForbiddenError(Exception):
@@ -123,10 +123,13 @@ class PendingPhysicalAssessmentDetail:
 class PendingPhysicalAssessments:
     """Wraps the pending list with the overdue threshold it was computed
     against, since TRAINER has no other way to read this application
-    setting (GET /application-settings is SUPER_ADMIN-only)."""
+    setting (GET /application-settings is SUPER_ADMIN-only). `timezone` is
+    "Asia/Kolkata" for a SUPER_ADMIN caller, the caller's own profile
+    timezone for a TRAINER caller."""
 
     items: list[PendingPhysicalAssessmentDetail]
     overdue_threshold_days: int
+    timezone: str
 
 
 def _to_detail(physical_assessment: PhysicalAssessment) -> PhysicalAssessmentDetail:
@@ -222,11 +225,13 @@ class PhysicalAssessmentService:
         client_repository: ClientRepository,
         assignment_repository: AssignmentRepository,
         application_setting_service: ApplicationSettingService,
+        trainer_repository: TrainerRepository,
     ) -> None:
         self._physical_assessment_repository = physical_assessment_repository
         self._client_repository = client_repository
         self._assignment_repository = assignment_repository
         self._application_setting_service = application_setting_service
+        self._trainer_repository = trainer_repository
 
     async def _authorize_view(
         self, actor_role: str | None, actor_id: uuid.UUID, client_id: uuid.UUID
@@ -431,30 +436,38 @@ class PhysicalAssessmentService:
     async def list_pending_physical_assessments(
         self, actor_role: str | None, actor_id: uuid.UUID
     ) -> PendingPhysicalAssessments:
+        """SUPER_ADMIN sees every client's pending assessments, framed in the
+        sitewide IST convention (no single trainer to anchor a personal
+        timezone to). TRAINER sees only their own assigned clients, framed in
+        their own profile timezone."""
         if actor_role == RoleName.SUPER_ADMIN:
             client_ids = None
+            tz = "Asia/Kolkata"
         elif actor_role == RoleName.TRAINER:
-            trainer_id = await self._assignment_repository.get_trainer_id_by_user_id(actor_id)
-            if trainer_id is None:
+            record = await self._trainer_repository.get_by_user_id(actor_id)
+            if record is None:
                 raise TrainerNotFoundError("No trainer profile exists for the current user.")
             assigned_clients = await self._assignment_repository.list_clients_for_trainer(
-                trainer_id
+                record.trainer.id
             )
-            client_ids = [record.client.id for record in assigned_clients]
+            client_ids = [client_record.client.id for client_record in assigned_clients]
+            tz = record.trainer.timezone or "Asia/Kolkata"
         else:
             raise ForbiddenError("Not authorized to view pending physical assessments.")
 
         physical_assessment_overdue_days = await self._application_setting_service.get_int(
             "physical_assessment_overdue_days"
         )
-        today = current_india_date()
+        today = client_local_today(tz)
         rows = await self._physical_assessment_repository.list_latest_for_clients(client_ids)
 
         pending = []
         for row in rows:
-            if not is_physical_assessment_overdue(row.recorded_at, today, physical_assessment_overdue_days):
+            if not is_physical_assessment_overdue(
+                row.recorded_at, today, physical_assessment_overdue_days, tz
+            ):
                 continue
-            last_physical_assessment_date = row.recorded_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
+            last_physical_assessment_date = row.recorded_at.astimezone(ZoneInfo(tz)).date()
             due_date = last_physical_assessment_date + timedelta(days=physical_assessment_overdue_days)
             pending.append(
                 PendingPhysicalAssessmentDetail(
@@ -465,5 +478,5 @@ class PhysicalAssessmentService:
                 )
             )
         return PendingPhysicalAssessments(
-            items=pending, overdue_threshold_days=physical_assessment_overdue_days
+            items=pending, overdue_threshold_days=physical_assessment_overdue_days, timezone=tz
         )

@@ -1,7 +1,9 @@
 import { apiClient } from "@/services/apiClient"
 import type {
   PaginatedTrainers,
+  SessionNotesGap,
   Trainer,
+  TrainerAgenda,
   TrainerAvailability,
   TrainerAvailabilityInput,
   TrainerCreateInput,
@@ -56,6 +58,16 @@ export const trainerService = {
 
   async updateSelf(payload: TrainerSelfUpdateInput): Promise<Trainer> {
     const { data } = await apiClient.put<Trainer>("/trainers/me", payload)
+    return data
+  },
+
+  async getAgenda(): Promise<TrainerAgenda> {
+    const { data } = await apiClient.get<TrainerAgenda>("/trainers/me/agenda")
+    return data
+  },
+
+  async getSessionNotesGap(): Promise<SessionNotesGap> {
+    const { data } = await apiClient.get<SessionNotesGap>("/trainers/me/session-notes-gap")
     return data
   },
 

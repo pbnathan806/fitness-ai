@@ -20,6 +20,7 @@ from services.physical_assessment_service import (
     TrainerNotAssignedError,
     TrainerNotFoundError,
 )
+from repositories.trainer_repository import TrainerRecord, TrainerRepository
 from tests.services.test_application_setting_service import FakeApplicationSettingRepository
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_client_service import FakeClientRepository, _make_client
@@ -97,6 +98,38 @@ class FakePhysicalAssessmentRepository(PhysicalAssessmentRepository):
         return [row for row in self._latest_rows if row.client_id in client_ids]
 
 
+class FakeTrainerRepository(TrainerRepository):
+    """Minimal local fake, not shared with test_trainer_service.py's own
+    FakeTrainerRepository - importing that one here would create a circular
+    import (test_trainer_service -> test_dashboard_service ->
+    test_physical_assessment_service -> test_trainer_service)."""
+
+    def __init__(self) -> None:
+        self._trainers: dict[uuid.UUID, object] = {}
+
+    def seed(self, trainer, email: str = "trainer@example.com") -> None:
+        self._trainers[trainer.id] = (trainer, email)
+
+    async def create(self, trainer):
+        raise NotImplementedError
+
+    async def get_by_id(self, trainer_id: uuid.UUID) -> TrainerRecord | None:
+        entry = self._trainers.get(trainer_id)
+        return TrainerRecord(trainer=entry[0], email=entry[1]) if entry else None
+
+    async def get_by_user_id(self, user_id: uuid.UUID) -> TrainerRecord | None:
+        for trainer, email in self._trainers.values():
+            if trainer.user_id == user_id:
+                return TrainerRecord(trainer=trainer, email=email)
+        return None
+
+    async def update(self, trainer_id: uuid.UUID, values: dict) -> TrainerRecord | None:
+        raise NotImplementedError
+
+    async def list_paginated(self, offset: int, limit: int, **kwargs):
+        raise NotImplementedError
+
+
 def _make_physical_assessment(client_id: uuid.UUID, recorded_by: uuid.UUID, **overrides) -> PhysicalAssessment:
     now = datetime.now(timezone.utc)
     defaults = dict(
@@ -150,7 +183,9 @@ def _make_application_setting_service(
 
 
 def _make_service(
-    physical_assessment_overdue_days: int = 14, edit_window_days: int = 30
+    physical_assessment_overdue_days: int = 14,
+    edit_window_days: int = 30,
+    trainer_repository: FakeTrainerRepository | None = None,
 ) -> tuple[
     PhysicalAssessmentService, FakePhysicalAssessmentRepository, FakeClientRepository, FakeAssignmentRepository
 ]:
@@ -162,7 +197,7 @@ def _make_service(
     )
     service = PhysicalAssessmentService(
         physical_assessment_repository, client_repository, assignment_repository,
-        application_setting_service,
+        application_setting_service, trainer_repository or FakeTrainerRepository(),
     )
     return service, physical_assessment_repository, client_repository, assignment_repository
 
@@ -754,13 +789,18 @@ def test_list_pending_physical_assessments_returns_all_for_super_admin():
     assert result.items[0].client_id == client.id
     assert result.items[0].days_overdue == 6
     assert result.overdue_threshold_days == 14
+    assert result.timezone == "Asia/Kolkata"
 
 
 def test_list_pending_physical_assessments_scoped_to_assigned_clients_for_trainer():
-    service, physical_assessment_repository, client_repository, assignment_repository = _make_service()
+    trainer_repository = FakeTrainerRepository()
+    service, physical_assessment_repository, client_repository, assignment_repository = _make_service(
+        trainer_repository=trainer_repository
+    )
     client, trainer, trainer_user_id = _setup_assigned_pair(
         client_repository, assignment_repository
     )
+    trainer_repository.seed(trainer)
     other_client = _make_client(user_id=uuid.uuid4())
     client_repository.seed(other_client, "other@example.com")
     overdue_recorded_at = datetime.now(timezone.utc) - timedelta(days=20)
@@ -781,6 +821,7 @@ def test_list_pending_physical_assessments_scoped_to_assigned_clients_for_traine
 
     assert len(result.items) == 1
     assert result.items[0].client_id == client.id
+    assert result.timezone == "America/New_York"
 
 
 def test_list_pending_physical_assessments_excludes_clients_within_window():

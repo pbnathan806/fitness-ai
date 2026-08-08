@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -350,6 +350,100 @@ def test_get_current_trainer_rejects_super_admin_and_client():
         test_client = TestClient(app)
 
         response = test_client.get("/api/v1/trainers/me")
+        assert response.status_code == 403
+
+
+def test_get_current_trainer_agenda_labels_sessions_and_reports_timezone():
+    from tests.services.test_session_service import _make_session
+
+    trainer_repository = FakeTrainerRepository()
+    session_repository = FakeSessionRepository()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_seeded_trainer(user_id=trainer_user_id, timezone="UTC")
+    trainer_repository.seed(trainer, "me@example.com")
+
+    today = datetime.now(timezone.utc).date()
+    session_repository.seed(
+        _make_session(
+            client_id=uuid.uuid4(),
+            trainer_id=trainer.id,
+            scheduled_start=datetime.combine(today, time(10, 0), tzinfo=timezone.utc),
+        )
+    )
+
+    _override_dependencies(
+        trainer_repository=trainer_repository,
+        session_repository=session_repository,
+        user_id=trainer_user_id,
+        active_role=RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/v1/trainers/me/agenda")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["timezone"] == "UTC"
+    assert len(body["sessions"]) == 1
+    assert body["sessions"][0]["day"] == "today"
+
+
+def test_get_current_trainer_agenda_rejects_super_admin_and_client():
+    for role in (RoleName.SUPER_ADMIN, RoleName.CLIENT):
+        _override_dependencies(user_id=uuid.uuid4(), active_role=role)
+        test_client = TestClient(app)
+
+        response = test_client.get("/api/v1/trainers/me/agenda")
+        assert response.status_code == 403
+
+
+def test_get_current_trainer_session_notes_gap_returns_missing_notes_sessions():
+    from tests.services.test_session_service import _make_session
+
+    trainer_repository = FakeTrainerRepository()
+    session_repository = FakeSessionRepository()
+    trainer_user_id = uuid.uuid4()
+    trainer = _make_seeded_trainer(user_id=trainer_user_id)
+    trainer_repository.seed(trainer, "me@example.com")
+
+    now = datetime.now(timezone.utc)
+    session_repository.seed(
+        _make_session(
+            client_id=uuid.uuid4(),
+            trainer_id=trainer.id,
+            scheduled_start=now - timedelta(hours=1),
+            trainer_notes=None,
+        )
+    )
+
+    application_setting_repository = FakeApplicationSettingRepository()
+    application_setting_repository.seed(_make_setting(key="physical_assessment_overdue_days", value="14"))
+    application_setting_repository.seed(_make_setting(key="session_notes_gap_days", value="2"))
+
+    _override_dependencies(
+        trainer_repository=trainer_repository,
+        session_repository=session_repository,
+        application_setting_service=ApplicationSettingService(application_setting_repository),
+        user_id=trainer_user_id,
+        active_role=RoleName.TRAINER,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/v1/trainers/me/session-notes-gap")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["gap_days"] == 2
+    assert body["timezone"] == "America/New_York"
+    assert len(body["sessions"]) == 1
+
+
+def test_get_current_trainer_session_notes_gap_rejects_super_admin_and_client():
+    for role in (RoleName.SUPER_ADMIN, RoleName.CLIENT):
+        _override_dependencies(user_id=uuid.uuid4(), active_role=role)
+        test_client = TestClient(app)
+
+        response = test_client.get("/api/v1/trainers/me/session-notes-gap")
         assert response.status_code == 403
 
 

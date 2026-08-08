@@ -1,8 +1,9 @@
 import { CalendarClock, Video, Phone, MapPin, MessageCircle } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import type { DashboardSession } from "@/types/dashboard"
 
@@ -20,6 +21,9 @@ interface UpcomingSessionsWidgetProps {
   isLoading: boolean
   isError: boolean
   onRetry: () => void
+  /** Optional explanatory line under the title - omitted by default so
+   * existing usages (e.g. Super Admin dashboard) render unchanged. */
+  description?: string
 }
 
 const MAX_ITEMS = 10
@@ -30,7 +34,9 @@ export function UpcomingSessionsWidget({
   isLoading,
   isError,
   onRetry,
+  description,
 }: UpcomingSessionsWidgetProps) {
+  const timezone = useDisplayTimezone()
   const upcoming = sessions
     ? sessions
         .filter((session) => session.status !== "CANCELLED" && new Date(session.scheduled_start) >= new Date())
@@ -45,6 +51,7 @@ export function UpcomingSessionsWidget({
           <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" />
           Upcoming Sessions
         </CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -74,7 +81,7 @@ export function UpcomingSessionsWidget({
                     <p className="truncate text-sm font-medium">
                       {clientNameById.get(session.client_id) ?? "Client"}
                     </p>
-                    <p className="text-xs text-muted-foreground">{formatDateTime(session.scheduled_start)}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTime(session.scheduled_start, timezone)}</p>
                   </div>
                 </li>
               )

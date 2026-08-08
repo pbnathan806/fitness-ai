@@ -2,20 +2,26 @@ import { Link } from "react-router-dom"
 import { Users, UserCog, CreditCard, CalendarDays, type LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-interface QuickAction {
+export interface QuickAction {
   label: string
   path: string
   icon: LucideIcon
 }
 
-const QUICK_ACTIONS: QuickAction[] = [
+const SUPER_ADMIN_QUICK_ACTIONS: QuickAction[] = [
   { label: "Manage Clients", path: "/super-admin/clients", icon: Users },
   { label: "Manage Trainers", path: "/super-admin/trainers", icon: UserCog },
   { label: "Subscriptions", path: "/super-admin/subscriptions", icon: CreditCard },
   { label: "Sessions", path: "/super-admin/sessions", icon: CalendarDays },
 ]
 
-export function QuickActionsWidget() {
+interface QuickActionsWidgetProps {
+  /** Defaults to the Super Admin shortcut set so the existing Super Admin
+   * dashboard usage renders unchanged. */
+  actions?: QuickAction[]
+}
+
+export function QuickActionsWidget({ actions = SUPER_ADMIN_QUICK_ACTIONS }: QuickActionsWidgetProps) {
   return (
     <Card>
       <CardHeader>
@@ -23,7 +29,7 @@ export function QuickActionsWidget() {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-2">
-          {QUICK_ACTIONS.map((action) => (
+          {actions.map((action) => (
             <Link
               key={action.path}
               to={action.path}

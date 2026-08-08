@@ -118,3 +118,4 @@ class PendingPhysicalAssessmentResponse(BaseModel):
 class PendingPhysicalAssessmentsResponse(BaseModel):
     items: list[PendingPhysicalAssessmentResponse]
     overdue_threshold_days: int
+    timezone: str

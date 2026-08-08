@@ -32,6 +32,10 @@ from repositories.trainer_repository import SQLAlchemyTrainerRepository, Trainer
 from repositories.user_repository import SQLAlchemyUserRepository, UserRepository
 from schemas.trainer import (
     PaginatedTrainersResponse,
+    SessionNotesGapResponse,
+    SessionNotesGapSessionResponse,
+    TrainerAgendaResponse,
+    TrainerAgendaSessionResponse,
     TrainerAvailabilityRequest,
     TrainerAvailabilityResponse,
     TrainerCreateRequest,
@@ -49,6 +53,8 @@ from services.trainer_service import (
     AvailabilityOverlapError,
     ForbiddenError,
     InvalidAvailabilityError,
+    SessionNotesGap,
+    TrainerAgenda,
     TrainerAlreadyExistsError,
     TrainerAvailabilityDetail,
     TrainerCreated,
@@ -195,6 +201,43 @@ def _to_availability_response(
     )
 
 
+def _to_agenda_response(agenda: TrainerAgenda) -> TrainerAgendaResponse:
+    return TrainerAgendaResponse(
+        timezone=agenda.timezone,
+        sessions=[
+            TrainerAgendaSessionResponse(
+                id=session.id,
+                client_id=session.client_id,
+                scheduled_start=session.scheduled_start,
+                scheduled_end=session.scheduled_end,
+                status=session.status,
+                meeting_type=session.meeting_type,
+                meeting_link=session.meeting_link,
+                day=session.day,
+            )
+            for session in agenda.sessions
+        ],
+    )
+
+
+def _to_session_notes_gap_response(gap: SessionNotesGap) -> SessionNotesGapResponse:
+    return SessionNotesGapResponse(
+        gap_days=gap.gap_days,
+        timezone=gap.timezone,
+        sessions=[
+            SessionNotesGapSessionResponse(
+                id=session.id,
+                client_id=session.client_id,
+                scheduled_start=session.scheduled_start,
+                scheduled_end=session.scheduled_end,
+                status=session.status,
+                meeting_type=session.meeting_type,
+            )
+            for session in gap.sessions
+        ],
+    )
+
+
 @router.post("", response_model=TrainerCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_trainer(
     payload: TrainerCreateRequest,
@@ -256,6 +299,44 @@ async def update_current_trainer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return _to_response(detail)
+
+
+@router.get("/me/agenda", response_model=TrainerAgendaResponse, status_code=status.HTTP_200_OK)
+async def get_current_trainer_agenda(
+    current_user: CurrentUser = Depends(get_current_user),
+    trainer_service: TrainerService = Depends(get_trainer_service),
+) -> TrainerAgendaResponse:
+    try:
+        agenda = await trainer_service.get_agenda(
+            actor_role=current_user.active_role, actor_id=current_user.user_id
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except TrainerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_agenda_response(agenda)
+
+
+@router.get(
+    "/me/session-notes-gap",
+    response_model=SessionNotesGapResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_current_trainer_session_notes_gap(
+    current_user: CurrentUser = Depends(get_current_user),
+    trainer_service: TrainerService = Depends(get_trainer_service),
+) -> SessionNotesGapResponse:
+    try:
+        gap = await trainer_service.get_session_notes_gap(
+            actor_role=current_user.active_role, actor_id=current_user.user_id
+        )
+    except ForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except TrainerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return _to_session_notes_gap_response(gap)
 
 
 @router.get(

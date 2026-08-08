@@ -18,6 +18,7 @@ from repositories.physical_assessment_repository import (
     PhysicalAssessmentRepository,
     SQLAlchemyPhysicalAssessmentRepository,
 )
+from repositories.trainer_repository import SQLAlchemyTrainerRepository, TrainerRepository
 from schemas.physical_assessment import (
     LatestPhysicalAssessmentResponse,
     PaginatedPhysicalAssessmentsResponse,
@@ -75,6 +76,10 @@ def get_application_setting_service(
     return ApplicationSettingService(application_setting_repository)
 
 
+def get_trainer_repository(session: AsyncSession = Depends(get_db)) -> TrainerRepository:
+    return SQLAlchemyTrainerRepository(session)
+
+
 def get_physical_assessment_service(
     physical_assessment_repository: PhysicalAssessmentRepository = Depends(get_physical_assessment_repository),
     client_repository: ClientRepository = Depends(get_client_repository),
@@ -82,12 +87,14 @@ def get_physical_assessment_service(
     application_setting_service: ApplicationSettingService = Depends(
         get_application_setting_service
     ),
+    trainer_repository: TrainerRepository = Depends(get_trainer_repository),
 ) -> PhysicalAssessmentService:
     return PhysicalAssessmentService(
         physical_assessment_repository,
         client_repository,
         assignment_repository,
         application_setting_service,
+        trainer_repository,
     )
 
 
@@ -130,6 +137,7 @@ def _to_pending_list_response(
     return PendingPhysicalAssessmentsResponse(
         items=[_to_pending_response(item) for item in result.items],
         overdue_threshold_days=result.overdue_threshold_days,
+        timezone=result.timezone,
     )
 
 

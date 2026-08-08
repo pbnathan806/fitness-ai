@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/common/ErrorState"
 import { CheckInForm } from "@/app/pages/sessions/components/CheckInForm"
 import { checkInService } from "@/services/checkInService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import type { CheckInCreateInput, CheckInUpdateInput } from "@/types/checkIn"
 import type { Session } from "@/types/session"
@@ -39,6 +40,7 @@ interface SessionCheckInCardProps {
  * message the product spec requires. */
 export function SessionCheckInCard({ session, allowSubmit, resolveSubmittedBy }: SessionCheckInCardProps) {
   const queryClient = useQueryClient()
+  const timezone = useDisplayTimezone()
   const [isEditing, setIsEditing] = useState(false)
   const [editWindowExpired, setEditWindowExpired] = useState(false)
 
@@ -151,11 +153,11 @@ export function SessionCheckInCard({ session, allowSubmit, resolveSubmittedBy }:
               )}
               <div>
                 <dt className="text-xs text-muted-foreground">Submitted At</dt>
-                <dd className="text-sm font-medium">{formatDateTime(checkIn.submitted_at)}</dd>
+                <dd className="text-sm font-medium">{formatDateTime(checkIn.submitted_at, timezone)}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Last Updated At</dt>
-                <dd className="text-sm font-medium">{formatDateTime(checkIn.updated_at)}</dd>
+                <dd className="text-sm font-medium">{formatDateTime(checkIn.updated_at, timezone)}</dd>
               </div>
             </dl>
 

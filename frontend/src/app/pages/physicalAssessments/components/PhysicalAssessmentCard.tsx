@@ -10,6 +10,7 @@ import { LoadingSpinner } from "@/components/common/LoadingSpinner"
 import { PhysicalAssessmentForm } from "@/app/pages/physicalAssessments/components/PhysicalAssessmentForm"
 import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import type { PhysicalAssessment, PhysicalAssessmentCreateInput, PhysicalAssessmentUpdateInput } from "@/types/physicalAssessment"
 
@@ -44,6 +45,7 @@ interface PhysicalAssessmentCardProps {
  * SessionCheckInCard's handling of the same pattern for check-ins). */
 export function PhysicalAssessmentCard({ clientId, initialAction }: PhysicalAssessmentCardProps) {
   const queryClient = useQueryClient()
+  const timezone = useDisplayTimezone()
   const [mode, setMode] = useState<"view" | "add" | "edit">(
     initialAction === "add" ? "add" : initialAction === "edit" ? "edit" : "view",
   )
@@ -121,7 +123,7 @@ export function PhysicalAssessmentCard({ clientId, initialAction }: PhysicalAsse
           )}
         </div>
         <CardDescription>
-          {latest ? `Last updated ${formatDateTime(latest.recorded_at)}` : "No physical assessments recorded yet."}
+          {latest ? `Last updated ${formatDateTime(latest.recorded_at, timezone)}` : "No physical assessments recorded yet."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

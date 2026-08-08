@@ -1,17 +1,26 @@
-/** Renders an ISO timestamp in the viewer's own local timezone (so it reads
- * correctly for both US and IST users per TIMEZONE_REQUIREMENTS.md) with the
- * zone abbreviation shown for clarity. */
-export function formatDateTime(iso: string): string {
+/** Renders an ISO timestamp. Defaults to the viewer's own local timezone (so
+ * it reads correctly for both US and IST users per TIMEZONE_REQUIREMENTS.md);
+ * pass `timezone` (an IANA identifier) to render in a specific timezone
+ * instead - used on Trainer-facing screens to show times in the trainer's
+ * own profile timezone rather than the browser's, via useDisplayTimezone(). */
+export function formatDateTime(iso: string, timezone?: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
+    ...(timezone ? { timeZone: timezone } : {}),
   }).format(new Date(iso))
 }
 
-/** Renders an ISO date/timestamp as a date-only string in the viewer's own
- * local timezone (dates alone have no timezone, but a `datetime` input may). */
-export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso))
+/** Renders an ISO date/timestamp as a date-only string. Defaults to the
+ * viewer's own local timezone; pass `timezone` to render in a specific
+ * timezone instead. Only pass `timezone` for values with a real time
+ * component (a full datetime) - a date-only value (e.g. "2026-08-08") has no
+ * timezone of its own, and applying one can shift it to the wrong day. */
+export function formatDate(iso: string, timezone?: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    ...(timezone ? { timeZone: timezone } : {}),
+  }).format(new Date(iso))
 }
 
 export function formatRelativeToNow(iso: string): string {

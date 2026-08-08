@@ -11,6 +11,7 @@ import { NotFoundPage } from "@/app/pages/NotFoundPage"
 import { PlaceholderPage } from "@/app/pages/PlaceholderPage"
 import { DashboardHomePage } from "@/app/pages/dashboard/DashboardHomePage"
 import { SuperAdminDashboardPage } from "@/app/pages/dashboard/SuperAdminDashboardPage"
+import { TrainerDashboardPage } from "@/app/pages/dashboard/TrainerDashboardPage"
 import { ClientDashboardPage } from "@/app/pages/dashboard/ClientDashboardPage"
 import { RoleHomeRedirect } from "@/app/pages/RoleHomeRedirect"
 import { ClientsListPage } from "@/app/pages/clients/ClientsListPage"
@@ -29,6 +30,7 @@ import { TrainerClientPhysicalAssessmentsPage } from "@/app/pages/trainer/Traine
 import { TrainerClientsPage } from "@/app/pages/trainer/TrainerClientsPage"
 import { TrainerSessionNotesPage } from "@/app/pages/trainer/TrainerSessionNotesPage"
 import { TrainerCheckInsPage } from "@/app/pages/trainer/TrainerCheckInsPage"
+import { TrainerTimezoneLayout } from "@/app/pages/trainer/TrainerTimezoneLayout"
 import { SubscriptionPlansListPage } from "@/app/pages/subscriptionPlans/SubscriptionPlansListPage"
 import { SubscriptionPlanCreatePage } from "@/app/pages/subscriptionPlans/SubscriptionPlanCreatePage"
 import { SubscriptionPlanEditPage } from "@/app/pages/subscriptionPlans/SubscriptionPlanEditPage"
@@ -222,17 +224,22 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute allowedRoles={[Role.TRAINER]} />,
         children: [
           {
-            element: <AppLayout />,
+            element: <TrainerTimezoneLayout />,
             children: [
-              { index: true, element: <Navigate to="dashboard" replace /> },
-              ...roleSectionChildren(Role.TRAINER),
-              // Not a NAV_ITEMS entry (no sidebar link) - reached by clicking a
-              // row on the Physical Assessments page (Pending or All tab) or
-              // the Assigned Clients list's "View Client" action. The bare
-              // /trainer/clients index route above (SECTION_OVERRIDES
-              // "Assigned Clients") is separate.
-              { path: "clients/:id", element: <TrainerClientPhysicalAssessmentsPage /> },
-              { path: "change-password", element: <ChangePasswordPage /> },
+              {
+                element: <AppLayout />,
+                children: [
+                  { index: true, element: <Navigate to="dashboard" replace /> },
+                  ...roleSectionChildren(Role.TRAINER, <TrainerDashboardPage />),
+                  // Not a NAV_ITEMS entry (no sidebar link) - reached by clicking a
+                  // row on the Physical Assessments page (Pending or All tab) or
+                  // the Assigned Clients list's "View Client" action. The bare
+                  // /trainer/clients index route above (SECTION_OVERRIDES
+                  // "Assigned Clients") is separate.
+                  { path: "clients/:id", element: <TrainerClientPhysicalAssessmentsPage /> },
+                  { path: "change-password", element: <ChangePasswordPage /> },
+                ],
+              },
             ],
           },
         ],

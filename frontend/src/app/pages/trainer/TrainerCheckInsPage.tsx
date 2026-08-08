@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import { checkInService } from "@/services/checkInService"
 import { clientService } from "@/services/clientService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 
 type Tab = "pending" | "all"
@@ -28,6 +29,7 @@ function checkInSummary(mood: number | null, energyLevel: number | null): string
  * SessionCheckInCard on the session details page - this page is just the
  * missing entry points into that existing capability. */
 export function TrainerCheckInsPage() {
+  const timezone = useDisplayTimezone()
   const [tab, setTab] = useState<Tab>("pending")
 
   const pendingQuery = useQuery({
@@ -69,7 +71,10 @@ export function TrainerCheckInsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold">Check-ins</h1>
-        <p className="text-sm text-muted-foreground">Client wellness check-ins for your assigned clients.</p>
+        <p className="text-sm text-muted-foreground">
+          Client wellness check-ins for your assigned clients.
+          {timezone && ` Times shown in your profile timezone (${timezone}).`}
+        </p>
       </div>
 
       <div className="flex gap-2">
@@ -121,7 +126,7 @@ export function TrainerCheckInsPage() {
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{item.client_name}</p>
-                        <p className="text-xs text-muted-foreground">Scheduled {formatDateTime(item.scheduled_start)}</p>
+                        <p className="text-xs text-muted-foreground">Scheduled {formatDateTime(item.scheduled_start, timezone)}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <Badge variant="warning">
@@ -181,7 +186,7 @@ export function TrainerCheckInsPage() {
                           {clientNameById.get(checkIn.client_id) ?? `Client #${checkIn.client_id.slice(0, 8)}`}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                          {formatDateTime(checkIn.submitted_at)}
+                          {formatDateTime(checkIn.submitted_at, timezone)}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
                           {checkInSummary(checkIn.mood, checkIn.energy_level)}

@@ -2,8 +2,11 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 
+from zoneinfo import ZoneInfo
+
 from core.constants import RoleName
 from core.security import generate_temporary_password, hash_password
+from models.session import SessionMeetingType, SessionStatus
 from models.trainer_availability import TrainerAvailability
 from models.trainer_profile import TrainerProfile
 from repositories.assignment_repository import AssignmentRepository
@@ -21,6 +24,8 @@ from utils.dashboard import (
     ist_month_range_utc,
     ist_today_range_utc,
     is_physical_assessment_overdue,
+    trainer_last_n_days_range_utc,
+    trainer_today_and_tomorrow_range_utc,
 )
 from utils.subscription import current_india_date
 
@@ -105,6 +110,41 @@ class TrainerAvailabilityDetail:
     end_time: time
     is_available: bool
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class TrainerAgendaSession:
+    id: uuid.UUID
+    client_id: uuid.UUID
+    scheduled_start: datetime
+    scheduled_end: datetime
+    status: SessionStatus
+    meeting_type: SessionMeetingType
+    meeting_link: str | None
+    day: str  # "today" | "tomorrow", relative to the trainer's own timezone
+
+
+@dataclass(frozen=True)
+class TrainerAgenda:
+    timezone: str
+    sessions: list[TrainerAgendaSession]
+
+
+@dataclass(frozen=True)
+class SessionNotesGapSession:
+    id: uuid.UUID
+    client_id: uuid.UUID
+    scheduled_start: datetime
+    scheduled_end: datetime
+    status: SessionStatus
+    meeting_type: SessionMeetingType
+
+
+@dataclass(frozen=True)
+class SessionNotesGap:
+    gap_days: int
+    timezone: str
+    sessions: list[SessionNotesGapSession]
 
 
 def _to_detail(record: TrainerRecord) -> TrainerProfileDetail:
@@ -475,6 +515,104 @@ class TrainerService:
             completed_sessions=completed_sessions,
             completion_rate=completion_rate,
             average_check_in_rate=average_check_in_rate,
+        )
+
+    # ------------------------------------------------------------------
+    # Agenda
+    # ------------------------------------------------------------------
+
+    async def get_agenda(self, actor_role: str | None, actor_id: uuid.UUID) -> TrainerAgenda:
+        """Today & Tomorrow's sessions, framed in the trainer's own profile
+        timezone (not the sitewide IST convention used elsewhere on this
+        dashboard) per explicit product decision. See memory
+        project_deferred_trainer_timezone_framing.
+        """
+        if actor_role != RoleName.TRAINER:
+            raise ForbiddenError("Only Trainers may access their own agenda via /trainers/me/agenda.")
+
+        record = await self._trainer_repository.get_by_user_id(actor_id)
+        if record is None:
+            raise TrainerNotFoundError("No trainer profile exists for the current user.")
+
+        trainer_timezone = record.trainer.timezone or _ADMIN_TIMEZONE
+        start, end = trainer_today_and_tomorrow_range_utc(trainer_timezone)
+        today_local = datetime.now(ZoneInfo(trainer_timezone)).date()
+
+        sessions = await self._session_repository.list_in_range(
+            start, end, trainer_id=record.trainer.id, exclude_cancelled=True
+        )
+
+        return TrainerAgenda(
+            timezone=trainer_timezone,
+            sessions=[
+                TrainerAgendaSession(
+                    id=session.id,
+                    client_id=session.client_id,
+                    scheduled_start=session.scheduled_start,
+                    scheduled_end=session.scheduled_end,
+                    status=session.status,
+                    meeting_type=session.meeting_type,
+                    meeting_link=session.meeting_link,
+                    day=(
+                        "today"
+                        if session.scheduled_start.astimezone(ZoneInfo(trainer_timezone)).date()
+                        == today_local
+                        else "tomorrow"
+                    ),
+                )
+                for session in sessions
+            ],
+        )
+
+    # ------------------------------------------------------------------
+    # Session notes gap
+    # ------------------------------------------------------------------
+
+    async def get_session_notes_gap(
+        self, actor_role: str | None, actor_id: uuid.UUID
+    ) -> SessionNotesGap:
+        """Past sessions in the trailing `session_notes_gap_days` days, framed in
+        the trainer's own profile timezone, that are missing trainer_notes.
+        """
+        if actor_role != RoleName.TRAINER:
+            raise ForbiddenError(
+                "Only Trainers may access their own session notes gap via "
+                "/trainers/me/session-notes-gap."
+            )
+
+        record = await self._trainer_repository.get_by_user_id(actor_id)
+        if record is None:
+            raise TrainerNotFoundError("No trainer profile exists for the current user.")
+
+        trainer_timezone = record.trainer.timezone or _ADMIN_TIMEZONE
+        gap_days = await self._application_setting_service.get_int("session_notes_gap_days")
+        start, end = trainer_last_n_days_range_utc(trainer_timezone, gap_days)
+        now = datetime.now(timezone.utc)
+
+        sessions = await self._session_repository.list_in_range(
+            start, end, trainer_id=record.trainer.id, exclude_cancelled=True
+        )
+
+        missing_notes = [
+            session
+            for session in sessions
+            if session.scheduled_start < now and not (session.trainer_notes or "").strip()
+        ]
+
+        return SessionNotesGap(
+            gap_days=gap_days,
+            timezone=trainer_timezone,
+            sessions=[
+                SessionNotesGapSession(
+                    id=session.id,
+                    client_id=session.client_id,
+                    scheduled_start=session.scheduled_start,
+                    scheduled_end=session.scheduled_end,
+                    status=session.status,
+                    meeting_type=session.meeting_type,
+                )
+                for session in missing_notes
+            ],
         )
 
     # ------------------------------------------------------------------

@@ -78,6 +78,17 @@ class SessionRepository(ABC):
     ) -> int: ...
 
     @abstractmethod
+    async def list_in_range(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        exclude_cancelled: bool = False,
+    ) -> list[Session]: ...
+
+    @abstractmethod
     async def count_completed(
         self,
         *,
@@ -259,6 +270,28 @@ class SQLAlchemySessionRepository(SessionRepository):
             select(func.count()).select_from(Session).where(*conditions)
         )
         return result.scalar_one()
+
+    async def list_in_range(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        trainer_id: uuid.UUID | None = None,
+        client_id: uuid.UUID | None = None,
+        exclude_cancelled: bool = False,
+    ) -> list[Session]:
+        conditions = [Session.scheduled_start >= start, Session.scheduled_start < end]
+        if trainer_id is not None:
+            conditions.append(Session.trainer_id == trainer_id)
+        if client_id is not None:
+            conditions.append(Session.client_id == client_id)
+        if exclude_cancelled:
+            conditions.append(Session.status != SessionStatus.CANCELLED)
+
+        result = await self._session.execute(
+            select(Session).where(*conditions).order_by(Session.scheduled_start.asc())
+        )
+        return list(result.scalars().all())
 
     async def count_non_cancelled(self, *, client_id: uuid.UUID) -> int:
         result = await self._session.execute(

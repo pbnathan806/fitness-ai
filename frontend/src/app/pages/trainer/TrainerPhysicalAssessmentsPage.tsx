@@ -15,6 +15,7 @@ import { PhysicalAssessmentForm } from "@/app/pages/physicalAssessments/componen
 import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { assignmentService } from "@/services/assignmentService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDate } from "@/lib/format"
 import type { PhysicalAssessmentCreateInput, PhysicalAssessmentUpdateInput } from "@/types/physicalAssessment"
 
@@ -35,6 +36,7 @@ type Tab = "pending" | "never-assessed" | "all"
  * trainer-facing UI. */
 export function TrainerPhysicalAssessmentsPage() {
   const queryClient = useQueryClient()
+  const timezone = useDisplayTimezone()
   const [tab, setTab] = useState<Tab>("pending")
   const [quickAddClientId, setQuickAddClientId] = useState("")
   const [isQuickAdding, setIsQuickAdding] = useState(false)
@@ -111,7 +113,8 @@ export function TrainerPhysicalAssessmentsPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             A physical assessment is expected every{" "}
             <span className="font-medium text-foreground">{pendingQuery.data.overdue_threshold_days} days</span>.
-            <span className="text-xs"> Pending shows how many days it's been since each client's last one.</span>
+            <span className="text-xs"> Pending shows how many days it's been since each client's last one.</span>{" "}
+            <span className="text-xs">Dates use your profile timezone ({pendingQuery.data.timezone}).</span>
           </p>
         )}
       </div>
@@ -342,6 +345,7 @@ export function TrainerPhysicalAssessmentsPage() {
               Record list, not a client list: every individual physical assessment ever recorded for
               your assigned clients, newest first. A client can appear more than once here (one row
               per assessment) or not at all if they're in Never Assessed.
+              {timezone && ` Dates use your profile timezone (${timezone}).`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -387,7 +391,7 @@ export function TrainerPhysicalAssessmentsPage() {
                           {clientNameById.get(physicalAssessment.client_id) ?? `Client #${physicalAssessment.client_id.slice(0, 8)}`}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                          {formatDate(physicalAssessment.recorded_at)}
+                          {formatDate(physicalAssessment.recorded_at, timezone)}
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">
                           {physicalAssessment.weight_kg != null ? `${physicalAssessment.weight_kg} kg` : "—"}

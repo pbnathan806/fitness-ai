@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import { sessionService } from "@/services/sessionService"
 import { clientService } from "@/services/clientService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 
 const PREVIEW_MAX_LENGTH = 80
@@ -25,6 +26,7 @@ function notesPreview(notes: string | null): string {
  * (`/trainer/sessions/:id`, SessionNotesForm) - this page is just the
  * missing entry point into that already-working capability. */
 export function TrainerSessionNotesPage() {
+  const timezone = useDisplayTimezone()
   const sessionsQuery = useQuery({ queryKey: ["sessions", "all"], queryFn: sessionService.listAllSessions })
   const clientsQuery = useQuery({ queryKey: ["clients", "all"], queryFn: clientService.listAllClients })
 
@@ -49,7 +51,10 @@ export function TrainerSessionNotesPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold">Session Notes</h1>
-        <p className="text-sm text-muted-foreground">Browse notes recorded across all your sessions.</p>
+        <p className="text-sm text-muted-foreground">
+          Browse notes recorded across all your sessions.
+          {timezone && ` Times shown in your profile timezone (${timezone}).`}
+        </p>
       </div>
 
       <Card>
@@ -99,7 +104,7 @@ export function TrainerSessionNotesPage() {
                         {clientNameById.get(session.client_id) ?? `Client #${session.client_id.slice(0, 8)}`}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                        {formatDateTime(session.scheduled_start)}
+                        {formatDateTime(session.scheduled_start, timezone)}
                       </td>
                       <td className="max-w-[360px] px-3 py-2.5 text-muted-foreground">
                         <span className={session.trainer_notes?.trim() ? "" : "italic"}>

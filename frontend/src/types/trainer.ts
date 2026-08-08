@@ -1,3 +1,5 @@
+import type { SessionMeetingType, SessionStatus } from "./session"
+
 export interface Trainer {
   id: string
   first_name: string | null
@@ -75,6 +77,42 @@ export interface TrainerAvailabilityInput {
   start_time: string
   end_time: string
   is_available: boolean
+}
+
+/** `day` is computed server-side from the trainer's own profile timezone
+ * (see `timezone` on TrainerAgenda) - not the browser's local timezone. */
+export interface TrainerAgendaSession {
+  id: string
+  client_id: string
+  scheduled_start: string
+  scheduled_end: string
+  status: SessionStatus
+  meeting_type: SessionMeetingType
+  meeting_link: string | null
+  day: "today" | "tomorrow"
+}
+
+export interface TrainerAgenda {
+  timezone: string
+  sessions: TrainerAgendaSession[]
+}
+
+export interface SessionNotesGapSession {
+  id: string
+  client_id: string
+  scheduled_start: string
+  scheduled_end: string
+  status: SessionStatus
+  meeting_type: SessionMeetingType
+}
+
+/** `gap_days` mirrors the configured session_notes_gap_days application
+ * setting - use it in UI copy instead of hardcoding "2 days". `timezone` is
+ * the trainer's own profile timezone the gap window was computed in. */
+export interface SessionNotesGap {
+  gap_days: number
+  timezone: string
+  sessions: SessionNotesGapSession[]
 }
 
 export type TrainerListSortBy = "created_at" | "first_name"

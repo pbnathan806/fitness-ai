@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import { SESSION_STATUS_BADGE_VARIANT, SESSION_STATUS_LABELS } from "@/lib/sessionStatus"
 import { SESSION_MEETING_TYPE_LABELS } from "@/lib/sessionMeetingType"
@@ -21,6 +22,8 @@ interface SessionDetailsCardProps {
  * Sessions" details screen uses ClientSessionDetailsCard instead, which is
  * typed to a narrower view that cannot carry those fields. */
 export function SessionDetailsCard({ session, clientName, trainerName }: SessionDetailsCardProps) {
+  const timezone = useDisplayTimezone()
+
   return (
     <Card>
       <CardHeader>
@@ -37,7 +40,7 @@ export function SessionDetailsCard({ session, clientName, trainerName }: Session
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Scheduled Start</p>
-          <p className="text-sm font-medium">{formatDateTime(session.scheduled_start)}</p>
+          <p className="text-sm font-medium">{formatDateTime(session.scheduled_start, timezone)}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Duration</p>

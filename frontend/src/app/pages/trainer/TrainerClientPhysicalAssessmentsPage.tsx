@@ -11,6 +11,7 @@ import { PhysicalAssessmentCard } from "@/app/pages/physicalAssessments/componen
 import { assignmentService } from "@/services/assignmentService"
 import { physicalAssessmentService } from "@/services/physicalAssessmentService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDate } from "@/lib/format"
 
 /** Trainer-facing client physical assessments view: latest physical
@@ -22,6 +23,7 @@ import { formatDate } from "@/lib/format"
  * not see a client's email or phone number anywhere in the trainer-facing
  * UI. */
 export function TrainerClientPhysicalAssessmentsPage() {
+  const timezone = useDisplayTimezone()
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const action = searchParams.get("action")
@@ -81,7 +83,10 @@ export function TrainerClientPhysicalAssessmentsPage() {
             <History className="size-4 text-muted-foreground" aria-hidden="true" />
             Physical Assessment History
           </CardTitle>
-          <CardDescription>Every physical assessment recorded for this client.</CardDescription>
+          <CardDescription>
+            Every physical assessment recorded for this client.
+            {timezone && ` Dates use your profile timezone (${timezone}).`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {historyQuery.isLoading && <Skeleton className="h-24 w-full" />}
@@ -112,7 +117,7 @@ export function TrainerClientPhysicalAssessmentsPage() {
                 <tbody className="divide-y">
                   {history.map((physicalAssessment) => (
                     <tr key={physicalAssessment.id}>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{formatDate(physicalAssessment.recorded_at)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{formatDate(physicalAssessment.recorded_at, timezone)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">
                         {physicalAssessment.weight_kg != null ? `${physicalAssessment.weight_kg} kg` : "—"}
                       </td>

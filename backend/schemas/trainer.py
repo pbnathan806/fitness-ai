@@ -1,8 +1,11 @@
 import uuid
 from datetime import datetime, time
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+from models.session import SessionMeetingType, SessionStatus
 
 
 def _validate_timezone(value: str) -> str:
@@ -145,3 +148,43 @@ class TrainerAvailabilityResponse(BaseModel):
     end_time: time
     is_available: bool
     created_at: datetime
+
+
+class TrainerAgendaSessionResponse(BaseModel):
+    id: uuid.UUID
+    client_id: uuid.UUID
+    scheduled_start: datetime
+    scheduled_end: datetime
+    status: SessionStatus
+    meeting_type: SessionMeetingType
+    meeting_link: str | None
+    day: Literal["today", "tomorrow"]
+
+
+class TrainerAgendaResponse(BaseModel):
+    """Sessions for today and tomorrow, framed in the trainer's own profile
+    timezone (`timezone`) - not the sitewide IST convention used elsewhere.
+    """
+
+    timezone: str
+    sessions: list[TrainerAgendaSessionResponse]
+
+
+class SessionNotesGapSessionResponse(BaseModel):
+    id: uuid.UUID
+    client_id: uuid.UUID
+    scheduled_start: datetime
+    scheduled_end: datetime
+    status: SessionStatus
+    meeting_type: SessionMeetingType
+
+
+class SessionNotesGapResponse(BaseModel):
+    """Past sessions missing trainer_notes within the trailing `gap_days` days,
+    framed in the trainer's own profile timezone (`timezone`) - `gap_days`
+    mirrors the configured session_notes_gap_days application setting so the
+    frontend can state it explicitly rather than hardcoding "2 days"."""
+
+    gap_days: int
+    timezone: str
+    sessions: list[SessionNotesGapSessionResponse]

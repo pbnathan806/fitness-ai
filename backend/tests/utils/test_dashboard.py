@@ -8,6 +8,10 @@ from utils.dashboard import (
     ist_next_days_range_utc,
     ist_today_range_utc,
     is_physical_assessment_overdue,
+    trainer_last_n_days_range_utc,
+    trainer_month_range_utc,
+    trainer_next_days_range_utc,
+    trainer_today_range_utc,
 )
 
 
@@ -84,3 +88,32 @@ def test_client_week_range_utc_spans_seven_days():
 def test_client_last_n_days_range_utc_spans_requested_days():
     start, end = client_last_n_days_range_utc("Asia/Kolkata", 90)
     assert end - start == timedelta(hours=24 * 90)
+
+
+def test_trainer_today_range_utc_is_24_hours():
+    start, end = trainer_today_range_utc("America/New_York")
+    assert end - start == timedelta(hours=24)
+
+
+def test_trainer_next_days_range_utc_spans_requested_days():
+    start, end = trainer_next_days_range_utc("America/New_York", 7)
+    assert end - start == timedelta(hours=24 * 7)
+
+
+def test_trainer_month_range_utc_start_before_end():
+    start, end = trainer_month_range_utc("America/New_York")
+    assert start < end
+
+
+def test_trainer_last_n_days_range_utc_spans_requested_days():
+    start, end = trainer_last_n_days_range_utc("America/New_York", 2)
+    assert end - start == timedelta(hours=24 * 2)
+
+
+def test_is_physical_assessment_overdue_respects_custom_timezone():
+    # Same instant, bucketed via a US timezone vs IST can land on different
+    # calendar days - confirms the tz param actually changes the comparison
+    # basis rather than being silently ignored.
+    latest = datetime(2026, 8, 16, 2, 0, tzinfo=timezone.utc)  # 07:30 IST / previous-day evening US
+    assert is_physical_assessment_overdue(latest, date(2026, 8, 30), 14, "Asia/Kolkata") is False
+    assert is_physical_assessment_overdue(latest, date(2026, 8, 30), 14, "America/New_York") is True

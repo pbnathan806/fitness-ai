@@ -1,5 +1,5 @@
 import { Activity, ClipboardCheck, Ruler } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { formatRelativeToNow } from "@/lib/format"
@@ -12,6 +12,9 @@ interface RecentActivityWidgetProps {
   isLoading: boolean
   isError: boolean
   onRetry: () => void
+  /** Optional explanatory line under the title - omitted by default so
+   * existing usages (e.g. Super Admin dashboard) render unchanged. */
+  description?: string
 }
 
 const MAX_ITEMS = 8
@@ -23,6 +26,7 @@ export function RecentActivityWidget({
   isLoading,
   isError,
   onRetry,
+  description,
 }: RecentActivityWidgetProps) {
   const feed = [
     ...(checkIns ?? []).map((item) => ({
@@ -48,6 +52,7 @@ export function RecentActivityWidget({
           <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
           Recent Activity
         </CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -68,13 +73,14 @@ export function RecentActivityWidget({
           <ul className="divide-y">
             {feed.map((item) => {
               const Icon = item.kind === "check-in" ? ClipboardCheck : Ruler
-              const description = item.kind === "check-in" ? "submitted a check-in" : "recorded a physical assessment"
+              const activityDescription =
+                item.kind === "check-in" ? "submitted a check-in" : "recorded a physical assessment"
               return (
                 <li key={`${item.kind}-${item.id}`} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                   <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm">
-                      <span className="font-medium">{item.clientName}</span> {description}
+                      <span className="font-medium">{item.clientName}</span> {activityDescription}
                     </p>
                     <p className="text-xs text-muted-foreground">{formatRelativeToNow(item.timestamp)}</p>
                   </div>

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import { formatDateTime } from "@/lib/format"
 import { SESSION_STATUS_BADGE_VARIANT, SESSION_STATUS_LABELS } from "@/lib/sessionStatus"
 import { SESSION_MEETING_TYPE_LABELS } from "@/lib/sessionMeetingType"
@@ -38,6 +39,7 @@ interface SessionTableProps {
  * status/meeting-type/date query params. */
 export function SessionTable({ rows, isLoading, isError, onRetry, page, totalPages, onPageChange, basePath }: SessionTableProps) {
   const navigate = useNavigate()
+  const timezone = useDisplayTimezone()
 
   if (isLoading) {
     return (
@@ -83,7 +85,7 @@ export function SessionTable({ rows, isLoading, isError, onRetry, page, totalPag
                   </Link>
                 </td>
                 <td className="max-w-[160px] truncate px-3 py-2.5 text-muted-foreground">{trainerName}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(session.scheduled_start)}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(session.scheduled_start, timezone)}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                   {SESSION_MEETING_TYPE_LABELS[session.meeting_type]}
                 </td>

@@ -14,11 +14,13 @@ from routers.physical_assessments import (
     get_assignment_repository,
     get_client_repository,
     get_physical_assessment_repository,
+    get_trainer_repository,
 )
 from tests.services.test_application_setting_service import FakeApplicationSettingRepository
 from tests.services.test_assignment_service import FakeAssignmentRepository, _make_trainer
 from tests.services.test_client_service import FakeClientRepository, _make_client
 from tests.services.test_physical_assessment_service import FakePhysicalAssessmentRepository, _make_physical_assessment
+from tests.services.test_trainer_service import FakeTrainerRepository
 
 
 def _make_repos() -> tuple[
@@ -64,12 +66,16 @@ def _override_dependencies(
     application_setting_repository: FakeApplicationSettingRepository,
     user_id: uuid.UUID,
     active_role: str | None,
+    trainer_repository: FakeTrainerRepository | None = None,
 ) -> None:
     app.dependency_overrides[get_physical_assessment_repository] = lambda: physical_assessment_repository
     app.dependency_overrides[get_client_repository] = lambda: client_repository
     app.dependency_overrides[get_assignment_repository] = lambda: assignment_repository
     app.dependency_overrides[get_application_setting_repository] = (
         lambda: application_setting_repository
+    )
+    app.dependency_overrides[get_trainer_repository] = lambda: (
+        trainer_repository or FakeTrainerRepository()
     )
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(
         user_id=user_id, active_role=active_role
@@ -569,9 +575,11 @@ def test_pending_physical_assessments_allowed_for_trainer():
             recorded_at=datetime.now(timezone.utc) - timedelta(days=20),
         )
     )
+    trainer_repository = FakeTrainerRepository()
+    trainer_repository.seed(trainer)
     _override_dependencies(
         physical_assessment_repository, client_repository, assignment_repository, setting_repository,
-        trainer_user_id, RoleName.TRAINER,
+        trainer_user_id, RoleName.TRAINER, trainer_repository,
     )
     test_client = TestClient(app)
 
@@ -583,16 +591,19 @@ def test_pending_physical_assessments_allowed_for_trainer():
     assert body["items"][0]["client_id"] == str(client.id)
     assert body["items"][0]["days_overdue"] == 6
     assert body["overdue_threshold_days"] == 14
+    assert body["timezone"] == "America/New_York"
 
 
 def test_pending_physical_assessments_returns_empty_list_when_none_pending():
     physical_assessment_repository, client_repository, assignment_repository, setting_repository = (
         _make_repos()
     )
-    _, _, trainer_user_id = _setup_assigned_pair(client_repository, assignment_repository)
+    _, trainer, trainer_user_id = _setup_assigned_pair(client_repository, assignment_repository)
+    trainer_repository = FakeTrainerRepository()
+    trainer_repository.seed(trainer)
     _override_dependencies(
         physical_assessment_repository, client_repository, assignment_repository, setting_repository,
-        trainer_user_id, RoleName.TRAINER,
+        trainer_user_id, RoleName.TRAINER, trainer_repository,
     )
     test_client = TestClient(app)
 

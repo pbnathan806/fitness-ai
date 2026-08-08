@@ -7,6 +7,7 @@ import { sessionService } from "@/services/sessionService"
 import { clientService } from "@/services/clientService"
 import { trainerService } from "@/services/trainerService"
 import { getApiErrorMessage } from "@/lib/errors"
+import { useDisplayTimezone } from "@/lib/displayTimezone"
 import type { SessionMeetingType, SessionStatus } from "@/types/session"
 
 const PAGE_SIZE = 10
@@ -16,6 +17,7 @@ const PAGE_SIZE = 10
  * (SessionService.list_sessions), so this reuses sessionService.listAllSessions
  * as-is - no client-scoping needed here beyond what the backend already does. */
 export function TrainerSessionsListPage() {
+  const timezone = useDisplayTimezone()
   const [statusFilter, setStatusFilter] = useState<SessionStatus | "ALL">("ALL")
   const [meetingTypeFilter, setMeetingTypeFilter] = useState<SessionMeetingType | "ALL">("ALL")
   const [dateFilter, setDateFilter] = useState("")
@@ -60,7 +62,10 @@ export function TrainerSessionsListPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold">Sessions</h1>
-        <p className="text-sm text-muted-foreground">Your scheduled coaching sessions.</p>
+        <p className="text-sm text-muted-foreground">
+          Your scheduled coaching sessions.
+          {timezone && ` Times shown in your profile timezone (${timezone}).`}
+        </p>
       </div>
 
       <SessionFilters
